@@ -1,16 +1,21 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections.Generic;
 
+[RequireComponent(typeof(Renderer))]
 public class DrawOnPlane : MonoBehaviour
 {
     public int textureSize = 1024;
     public Color drawColor = Color.black;
-    public float brushSize = 10f;
+    public float brushSize = 2f;
 
     private Texture2D texture;
     private Renderer rend;
-    // Pour multi-touch : stocke la dernière position de chaque doigt (touchId)
-    private System.Collections.Generic.Dictionary<int, Vector2?> lastDrawPositions = new System.Collections.Generic.Dictionary<int, Vector2?>();
+
+    private Dictionary<int, Vector2?> lastDrawPositions = new Dictionary<int, Vector2?>();
+    public Dictionary<int, List<Vector2>> drawPaths = new Dictionary<int, List<Vector2>>();
+
+    public ShapeRecognizer shapeRecognizer;
 
     void Start()
     {
@@ -22,103 +27,90 @@ public class DrawOnPlane : MonoBehaviour
 
     void Update()
     {
-        bool inputHandled = false;
-        // Utilisation du système de touch du New Input System
-        if (Touchscreen.current != null)
-        {
-            foreach (var touch in Touchscreen.current.touches)
-            {
-                int touchId = touch.touchId.ReadValue();
-                // isPressed est vrai tant que le doigt est posé
-                if (touch.press.isPressed)
-                {
-                    Vector2 touchPos = touch.position.ReadValue();
-                    Ray ray = Camera.main.ScreenPointToRay(touchPos);
-                    if (Physics.Raycast(ray, out RaycastHit hit))
-                    {
-                        if (hit.collider.gameObject == gameObject)
-                        {
-                            Vector2 uv = hit.textureCoord;
-                            int x = (int)(uv.x * texture.width);
-                            int y = (int)(uv.y * texture.height);
-                            Vector2 currentPos = new Vector2(x, y);
+        HandleTouchInput();
+        HandleMouseInput();
+    }
 
-                            Vector2? lastPos = null;
-                            lastDrawPositions.TryGetValue(touchId, out lastPos);
-                            if (lastPos.HasValue)
-                            {
-                                DrawLine(lastPos.Value, currentPos);
-                            }
-                            else
-                            {
-                                DrawCircle(x, y);
-                            }
-                            lastDrawPositions[touchId] = currentPos;
-                            texture.Apply();
-                            inputHandled = true;
-                        }
-                    }
-                }
-                else
+    void HandleTouchInput()
+    {
+        if (Touchscreen.current == null) return;
+
+        foreach (var touch in Touchscreen.current.touches)
+        {
+            int touchId = touch.touchId.ReadValue();
+            if (touch.press.isPressed)
+            {
+                Vector2 touchPos = touch.position.ReadValue();
+                ProcessDrawing(touchId, touchPos);
+            }
+            else
+            {
+                // Lorsque le doigt est levé, lancer l'analyse de la forme
+                if (drawPaths.ContainsKey(touchId))
                 {
-                    // Lorsque le doigt est levé, on oublie sa dernière position
-                    if (lastDrawPositions.ContainsKey(touchId))
-                        lastDrawPositions.Remove(touchId);
+                    shapeRecognizer.AnalyzeShape(drawPaths[touchId]);
+                    drawPaths.Remove(touchId);
                 }
+                lastDrawPositions.Remove(touchId);
             }
         }
+    }
 
-        if (!inputHandled && Mouse.current != null && Mouse.current.leftButton.isPressed)
+    void HandleMouseInput()
+    {
+        int mouseId = -1;
+        if (Mouse.current != null && Mouse.current.leftButton.isPressed)
         {
-            int mouseId = -1; // clé spéciale pour la souris
             Vector2 mousePos = Mouse.current.position.ReadValue();
-            Ray ray = Camera.main.ScreenPointToRay(mousePos);
-            if (Physics.Raycast(ray, out RaycastHit hit))
-            {
-                if (hit.collider.gameObject == gameObject)
-                {
-                    Vector2 uv = hit.textureCoord;
-                    int x = (int)(uv.x * texture.width);
-                    int y = (int)(uv.y * texture.height);
-                    Vector2 currentPos = new Vector2(x, y);
-
-                    Vector2? lastPos = null;
-                    lastDrawPositions.TryGetValue(mouseId, out lastPos);
-                    if (lastPos.HasValue)
-                    {
-                        DrawLine(lastPos.Value, currentPos);
-                    }
-                    else
-                    {
-                        DrawCircle(x, y);
-                    }
-                    lastDrawPositions[mouseId] = currentPos;
-                    texture.Apply();
-                }
-            }
+            ProcessDrawing(mouseId, mousePos);
         }
         else
         {
-            // Lorsque le bouton souris est relâché, on oublie sa dernière position
-            if (lastDrawPositions.ContainsKey(-1))
-                lastDrawPositions.Remove(-1);
+            // Lorsque le bouton souris est relâché, lancer l'analyse de la forme
+            if (drawPaths.ContainsKey(mouseId))
+            {
+                shapeRecognizer.AnalyzeShape(drawPaths[mouseId]);
+                drawPaths.Remove(mouseId);
+            }
+            lastDrawPositions.Remove(mouseId);
+        }
+    }
+
+    void ProcessDrawing(int id, Vector2 screenPos)
+    {
+        Ray ray = Camera.main.ScreenPointToRay(screenPos);
+        if (Physics.Raycast(ray, out RaycastHit hit) && hit.collider.gameObject == gameObject)
+        {
+            Vector2 uv = hit.textureCoord;
+            int x = (int)(uv.x * texture.width);
+            int y = (int)(uv.y * texture.height);
+            Vector2 currentPos = new Vector2(x, y);
+
+            if (!drawPaths.ContainsKey(id)) drawPaths[id] = new List<Vector2>();
+            drawPaths[id].Add(currentPos);
+
+            Vector2? lastPos = null;
+            lastDrawPositions.TryGetValue(id, out lastPos);
+            if (lastPos.HasValue) DrawLine(lastPos.Value, currentPos);
+            else DrawCircle(x, y);
+
+            lastDrawPositions[id] = currentPos;
+            texture.Apply();
         }
     }
 
     void DrawCircle(int x, int y)
     {
-        for (int i = - (int)brushSize; i <= brushSize; i++)
+        for (int i = -(int)brushSize; i <= brushSize; i++)
         {
-            for (int j = - (int)brushSize; j <= brushSize; j++)
+            for (int j = -(int)brushSize; j <= brushSize; j++)
             {
                 if (i * i + j * j <= brushSize * brushSize)
                 {
                     int px = x + i;
                     int py = y + j;
                     if (px >= 0 && px < texture.width && py >= 0 && py < texture.height)
-                    {
                         texture.SetPixel(px, py, drawColor);
-                    }
                 }
             }
         }
@@ -140,19 +132,10 @@ public class DrawOnPlane : MonoBehaviour
         while (true)
         {
             DrawCircle(x0, y0);
-            if (x0 == x1 && y0 == y1)
-                break;
+            if (x0 == x1 && y0 == y1) break;
             int e2 = 2 * err;
-            if (e2 > -dy)
-            {
-                err -= dy;
-                x0 += sx;
-            }
-            if (e2 < dx)
-            {
-                err += dx;
-                y0 += sy;
-            }
+            if (e2 > -dy) { err -= dy; x0 += sx; }
+            if (e2 < dx) { err += dx; y0 += sy; }
         }
     }
 }
