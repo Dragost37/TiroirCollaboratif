@@ -1,0 +1,23 @@
+{
+  "assemblyId": "stool_v1",
+  "title": "Tabouret 3 pièces",
+  "steps": [
+    {
+      "id": 1,
+      "targetPart": "Seat",
+      "description": "Placer l’assise au centre"
+    },
+    {
+      "id": 2,
+      "targetPart": "Leg_A",
+      "snapTo": "Seat_Underside_A",
+      "description": "Fixer le pied A"
+    },
+    {
+      "id": 3,
+      "targetPart": "Leg_B",
+      "snapTo": "Seat_Underside_B",
+      "description": "Fixer le pied B"
+    }
+  ]
+}

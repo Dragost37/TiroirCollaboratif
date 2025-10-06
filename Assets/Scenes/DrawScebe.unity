@@ -508,6 +508,10 @@ PrefabInstance:
       propertyPath: planeTransform
       value: 
       objectReference: {fileID: 1443821058}
+    - target: {fileID: 3108435306140609420, guid: 3b2f720dd65764631930345c358d6050, type: 3}
+      propertyPath: scriptsToAdd.Array.size
+      value: 1
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
