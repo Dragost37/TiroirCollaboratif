@@ -9,7 +9,8 @@ public class DrawOnPlane : MonoBehaviour
 
     private Texture2D texture;
     private Renderer rend;
-    private Vector2? lastDrawPosition = null;
+    // Pour multi-touch : stocke la dernière position de chaque doigt (touchId)
+    private System.Collections.Generic.Dictionary<int, Vector2?> lastDrawPositions = new System.Collections.Generic.Dictionary<int, Vector2?>();
 
     void Start()
     {
@@ -21,9 +22,57 @@ public class DrawOnPlane : MonoBehaviour
 
     void Update()
     {
-        if (Mouse.current.leftButton.isPressed)
+        bool inputHandled = false;
+        // Utilisation du système de touch du New Input System
+        if (Touchscreen.current != null)
         {
-            Ray ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
+            foreach (var touch in Touchscreen.current.touches)
+            {
+                int touchId = touch.touchId.ReadValue();
+                // isPressed est vrai tant que le doigt est posé
+                if (touch.press.isPressed)
+                {
+                    Vector2 touchPos = touch.position.ReadValue();
+                    Ray ray = Camera.main.ScreenPointToRay(touchPos);
+                    if (Physics.Raycast(ray, out RaycastHit hit))
+                    {
+                        if (hit.collider.gameObject == gameObject)
+                        {
+                            Vector2 uv = hit.textureCoord;
+                            int x = (int)(uv.x * texture.width);
+                            int y = (int)(uv.y * texture.height);
+                            Vector2 currentPos = new Vector2(x, y);
+
+                            Vector2? lastPos = null;
+                            lastDrawPositions.TryGetValue(touchId, out lastPos);
+                            if (lastPos.HasValue)
+                            {
+                                DrawLine(lastPos.Value, currentPos);
+                            }
+                            else
+                            {
+                                DrawCircle(x, y);
+                            }
+                            lastDrawPositions[touchId] = currentPos;
+                            texture.Apply();
+                            inputHandled = true;
+                        }
+                    }
+                }
+                else
+                {
+                    // Lorsque le doigt est levé, on oublie sa dernière position
+                    if (lastDrawPositions.ContainsKey(touchId))
+                        lastDrawPositions.Remove(touchId);
+                }
+            }
+        }
+
+        if (!inputHandled && Mouse.current != null && Mouse.current.leftButton.isPressed)
+        {
+            int mouseId = -1; // clé spéciale pour la souris
+            Vector2 mousePos = Mouse.current.position.ReadValue();
+            Ray ray = Camera.main.ScreenPointToRay(mousePos);
             if (Physics.Raycast(ray, out RaycastHit hit))
             {
                 if (hit.collider.gameObject == gameObject)
@@ -33,22 +82,26 @@ public class DrawOnPlane : MonoBehaviour
                     int y = (int)(uv.y * texture.height);
                     Vector2 currentPos = new Vector2(x, y);
 
-                    if (lastDrawPosition.HasValue)
+                    Vector2? lastPos = null;
+                    lastDrawPositions.TryGetValue(mouseId, out lastPos);
+                    if (lastPos.HasValue)
                     {
-                        DrawLine(lastDrawPosition.Value, currentPos);
+                        DrawLine(lastPos.Value, currentPos);
                     }
                     else
                     {
                         DrawCircle(x, y);
                     }
-                    lastDrawPosition = currentPos;
+                    lastDrawPositions[mouseId] = currentPos;
                     texture.Apply();
                 }
             }
         }
         else
         {
-            lastDrawPosition = null;
+            // Lorsque le bouton souris est relâché, on oublie sa dernière position
+            if (lastDrawPositions.ContainsKey(-1))
+                lastDrawPositions.Remove(-1);
         }
     }
 
