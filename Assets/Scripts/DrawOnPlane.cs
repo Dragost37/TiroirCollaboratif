@@ -9,8 +9,7 @@ public class DrawOnPlane : MonoBehaviour
 
     private Texture2D texture;
     private Renderer rend;
-    // Pour multi-touch : stocke la dernière position de chaque doigt (touchId)
-    private System.Collections.Generic.Dictionary<int, Vector2?> lastDrawPositions = new System.Collections.Generic.Dictionary<int, Vector2?>();
+    private Vector2? lastDrawPosition = null;
 
     void Start()
     {
@@ -22,53 +21,34 @@ public class DrawOnPlane : MonoBehaviour
 
     void Update()
     {
-        // Utilisation du système de touch du New Input System
-        if (Touchscreen.current != null)
+        if (Mouse.current.leftButton.isPressed)
         {
-            foreach (var touch in Touchscreen.current.touches)
+            Ray ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
+            if (Physics.Raycast(ray, out RaycastHit hit))
             {
-                int touchId = touch.touchId.ReadValue();
-                // isPressed est vrai tant que le doigt est posé
-                if (touch.press.isPressed)
+                if (hit.collider.gameObject == gameObject)
                 {
-                    Vector2 touchPos = touch.position.ReadValue();
-                    Ray ray = Camera.main.ScreenPointToRay(touchPos);
-                    if (Physics.Raycast(ray, out RaycastHit hit))
-                    {
-                        if (hit.collider.gameObject == gameObject)
-                        {
-                            Vector2 uv = hit.textureCoord;
-                            int x = (int)(uv.x * texture.width);
-                            int y = (int)(uv.y * texture.height);
-                            Vector2 currentPos = new Vector2(x, y);
+                    Vector2 uv = hit.textureCoord;
+                    int x = (int)(uv.x * texture.width);
+                    int y = (int)(uv.y * texture.height);
+                    Vector2 currentPos = new Vector2(x, y);
 
-                            Vector2? lastPos = null;
-                            lastDrawPositions.TryGetValue(touchId, out lastPos);
-                            if (lastPos.HasValue)
-                            {
-                                DrawLine(lastPos.Value, currentPos);
-                            }
-                            else
-                            {
-                                DrawCircle(x, y);
-                            }
-                            lastDrawPositions[touchId] = currentPos;
-                            texture.Apply();
-                        }
+                    if (lastDrawPosition.HasValue)
+                    {
+                        DrawLine(lastDrawPosition.Value, currentPos);
                     }
-                }
-                else
-                {
-                    // Lorsque le doigt est levé, on oublie sa dernière position
-                    if (lastDrawPositions.ContainsKey(touchId))
-                        lastDrawPositions.Remove(touchId);
+                    else
+                    {
+                        DrawCircle(x, y);
+                    }
+                    lastDrawPosition = currentPos;
+                    texture.Apply();
                 }
             }
         }
         else
         {
-            // Optionnel : support souris en fallback (désactivé ici)
-            // lastDrawPositions.Clear();
+            lastDrawPosition = null;
         }
     }
 

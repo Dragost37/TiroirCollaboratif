@@ -131,6 +131,7 @@ GameObject:
   - component: {fileID: 1443821057}
   - component: {fileID: 1443821056}
   - component: {fileID: 1443821055}
+  - component: {fileID: 1443821059}
   m_Layer: 0
   m_Name: Plane
   m_TagString: Untagged
@@ -231,6 +232,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1443821059
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1443821054}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ee301a3422b414cf4b7930b0ca730e99, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DrawOnPlane
+  textureSize: 1024
+  drawColor: {r: 0, g: 0, b: 0, a: 1}
+  brushSize: 3
 --- !u!1 &1618888528
 GameObject:
   m_ObjectHideFlags: 0
