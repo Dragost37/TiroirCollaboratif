@@ -5,6 +5,8 @@ public class ObjectCreator : MonoBehaviour
     public Transform planeTransform; // le plane sur lequel on dessine
     public int textureWidth = 1024;  // largeur de la texture pour conversion
 
+    //public List<MonoBehaviour> scriptsToAdd;
+    
     public void CreateSquareObject(Vector2 center, float size)
     {
         // Convertir UV en position locale sur le plane
@@ -24,5 +26,26 @@ public class ObjectCreator : MonoBehaviour
 
         // Ajouter automatiquement le script PartController
         cube.AddComponent<PartController>();
+    }
+    
+    public void CreateRectangleObject(Vector2 center, float width, float height)
+    {
+        // Convertir UV en position locale sur le plane
+        Vector3 localPos = new Vector3(
+            (center.x / textureWidth - 0.5f) * 10f,
+            0f,
+            (center.y / textureWidth - 0.5f) * 10f
+        );
+
+        // Position dans le monde
+        Vector3 worldPos = planeTransform.TransformPoint(localPos);
+
+        GameObject rectangle = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        rectangle.transform.position = worldPos + Vector3.up * 0.5f;
+        rectangle.transform.localScale = new Vector3(width * 0.01f, 0.1f, height * 0.01f);
+        rectangle.GetComponent<Renderer>().material.color = Color.blue;
+
+        // Ajouter automatiquement tous les scripts spécifiés
+        rectangle.AddComponent<PartController>();
     }
 }

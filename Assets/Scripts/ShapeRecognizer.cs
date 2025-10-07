@@ -5,17 +5,16 @@ public class ShapeRecognizer : MonoBehaviour
 {
     public ObjectCreator objectCreator;
 
-    // Analyse une forme dessinée et détecte un carré
+    // Analyse une forme dessinée et détecte un carré ou un rectangle
     public void AnalyzeShape(List<Vector2> points)
     {
         Debug.Log("Analyse de la forme dessinée avec " + points.Count + " points");
         if (points.Count < 10) 
         {
             Debug.Log("Forme trop petite pour être reconnue");
-            return; // trop petit pour reconnaître une forme
+            return;
         }
 
-        // Calcul des bords
         float minX = points[0].x, maxX = points[0].x;
         float minY = points[0].y, maxY = points[0].y;
 
@@ -30,12 +29,18 @@ public class ShapeRecognizer : MonoBehaviour
         float width = maxX - minX;
         float height = maxY - minY;
 
-        // Détection approximative d'un carré
-        if (Mathf.Abs(width - height) < width * 0.2f)
+        float aspectRatio = width > height ? width / height : height / width;
+        if (aspectRatio < 1.5f)
         {
-            Debug.Log("Carre détecté");
+            Debug.Log("Carré détecté");
             Vector2 center = new Vector2(minX + width / 2, minY + height / 2);
             objectCreator.CreateSquareObject(center, width);
+        }
+        else
+        {
+            Debug.Log("Rectangle détecté");
+            Vector2 center = new Vector2(minX + width / 2, minY + height / 2);
+            objectCreator.CreateRectangleObject(center, width, height);
         }
     }
 }
