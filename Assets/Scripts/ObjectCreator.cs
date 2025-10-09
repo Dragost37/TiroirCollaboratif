@@ -6,14 +6,14 @@ public class ObjectCreator : MonoBehaviour
     public int textureWidth = 1024;  // largeur de la texture pour conversion
 
     //public List<MonoBehaviour> scriptsToAdd;
-    
+
     public void CreateSquareObject(Vector2 center, float size)
     {
-        // Convertir UV en position locale sur le plane
+        // Convertir UV en position locale sur le plane sans effet miroir
         Vector3 localPos = new Vector3(
-            (center.x / textureWidth - 0.5f) * 10f,
+            5f - (center.x / textureWidth) * 10f,
             0f,
-            (center.y / textureWidth - 0.5f) * 10f
+            5f - (center.y / textureWidth) * 10f
         );
 
         // Position dans le monde
@@ -27,14 +27,14 @@ public class ObjectCreator : MonoBehaviour
         // Ajouter automatiquement le script PartController
         cube.AddComponent<PartController>();
     }
-    
+
     public void CreateRectangleObject(Vector2 center, float width, float height)
     {
-        // Convertir UV en position locale sur le plane
+        // Convertir UV en position locale sur le plane sans effet miroir
         Vector3 localPos = new Vector3(
-            (center.x / textureWidth - 0.5f) * 10f,
+            5f - (center.x / textureWidth) * 10f,
             0f,
-            (center.y / textureWidth - 0.5f) * 10f
+            5f - (center.y / textureWidth) * 10f
         );
 
         // Position dans le monde

@@ -4,16 +4,13 @@ using System.Collections.Generic;
 public class ShapeRecognizer : MonoBehaviour
 {
     public ObjectCreator objectCreator;
+    public GameObject radialMenu;
 
     // Analyse une forme dessinée et détecte un carré ou un rectangle
     public void AnalyzeShape(List<Vector2> points)
     {
         Debug.Log("Analyse de la forme dessinée avec " + points.Count + " points");
-        if (points.Count < 10) 
-        {
-            Debug.Log("Forme trop petite pour être reconnue");
-            return;
-        }
+
 
         float minX = points[0].x, maxX = points[0].x;
         float minY = points[0].y, maxY = points[0].y;
@@ -28,6 +25,19 @@ public class ShapeRecognizer : MonoBehaviour
 
         float width = maxX - minX;
         float height = maxY - minY;
+        if (width < 0.05f && height < 0.05f) // seuil à ajuster selon l’échelle de ton canvas
+        {
+            Debug.Log("Forme trop petite (point) - ignorée");
+            return;
+        }
+
+        // Détection d’un trait
+        if (width < height * 0.2f || height < width * 0.2f)
+        {
+            Debug.Log("Trait détecté");
+            radialMenu.SetActive(true);
+            return;
+        }
 
         float aspectRatio = width > height ? width / height : height / width;
         if (aspectRatio < 1.5f)
