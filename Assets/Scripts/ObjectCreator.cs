@@ -4,8 +4,9 @@ public class ObjectCreator : MonoBehaviour
 {
     public Transform planeTransform; // le plane sur lequel on dessine
     public int textureWidth = 1024;  // largeur de la texture pour conversion
-
-    //public List<MonoBehaviour> scriptsToAdd;
+    public GameObject nailPrefab; // Prefab désactivé à dupliquer
+    public GameObject screwPrefab; // Prefab désactivé à dupliquer
+    public GameObject gameObjectScripts;
 
     public void CreateSquareObject(Vector2 center, float size)
     {
@@ -24,8 +25,8 @@ public class ObjectCreator : MonoBehaviour
         cube.transform.localScale = new Vector3(size * 0.01f, 0.1f, size * 0.01f);
         cube.GetComponent<Renderer>().material.color = Color.red;
 
-        // Ajouter automatiquement le script PartController
-        cube.AddComponent<PartController>();
+        // Ajouter les scripts communs si nécessaire
+        CopyAllScripts(gameObjectScripts, cube);
     }
 
     public void CreateRectangleObject(Vector2 center, float width, float height)
@@ -45,7 +46,73 @@ public class ObjectCreator : MonoBehaviour
         rectangle.transform.localScale = new Vector3(width * 0.01f, 0.1f, height * 0.01f);
         rectangle.GetComponent<Renderer>().material.color = Color.blue;
 
-        // Ajouter automatiquement tous les scripts spécifiés
-        rectangle.AddComponent<PartController>();
+        // Ajouter les scripts communs si nécessaire
+        CopyAllScripts(gameObjectScripts, rectangle);
+    }
+
+    public void CreateNailObject()
+    {
+        if (nailPrefab == null)
+        {
+            Debug.LogWarning("Le prefab 'nail' n'est pas assigné dans l'inspecteur !");
+            return;
+        }
+
+        GameObject newNail = Instantiate(nailPrefab, Vector3.zero, Quaternion.identity);
+
+        newNail.SetActive(true);
+
+        newNail.transform.position = new Vector3(0, 0.5f, 0);
+        newNail.transform.rotation = Quaternion.Euler(90, 0, 0);
+
+        // Ajouter les scripts communs si nécessaire
+        CopyAllScripts(gameObjectScripts, newNail);
+    }
+
+    public void CreateScrewObject()
+    {
+        if (screwPrefab == null)
+        {
+            Debug.LogWarning("Le prefab 'screw' n'est pas assigné dans l'inspecteur !");
+            return;
+        }
+
+        GameObject newScrew = Instantiate(screwPrefab, Vector3.zero, Quaternion.identity);
+
+        newScrew.SetActive(true);
+
+        newScrew.transform.position = new Vector3(2.5f, -3.5f, 0);
+        newScrew.transform.rotation = Quaternion.Euler(90, 0, 0);
+
+        // Ajouter les scripts communs si nécessaire
+        CopyAllScripts(gameObjectScripts, newScrew);
+    }
+
+    private void CopyAllScripts(GameObject source, GameObject target)
+    {
+        if (source == null || target == null)
+            return;
+
+        MonoBehaviour[] sourceScripts = source.GetComponents<MonoBehaviour>();
+        foreach (MonoBehaviour sourceScript in sourceScripts)
+        {
+            if (sourceScript == null)
+                continue;
+
+            System.Type type = sourceScript.GetType();
+            if (target.GetComponent(type) != null)
+                continue;
+
+            MonoBehaviour targetScript = (MonoBehaviour)target.AddComponent(type);
+
+            var fields = type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            foreach (var field in fields)
+            {
+                if (field.IsPublic || field.GetCustomAttributes(typeof(SerializeField), true).Length > 0)
+                {
+                    field.SetValue(targetScript, field.GetValue(sourceScript));
+                }
+            }
+        }
     }
 }

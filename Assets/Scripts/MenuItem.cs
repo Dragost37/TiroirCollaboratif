@@ -5,6 +5,7 @@ public class MenuItem : MonoBehaviour, IPointerClickHandler
 {
     private static MenuItem selectedItem = null;
     public GameObject radialMenu;
+    public ObjectCreator objectCreator;
     
     public void OnPointerClick(PointerEventData eventData)
     {
@@ -20,6 +21,17 @@ public class MenuItem : MonoBehaviour, IPointerClickHandler
         selectedItem = this;
         Debug.Log("Menu item selected: " + gameObject.name);
         radialMenu.SetActive(false);
+        if(gameObject.name == "Item - Clou")
+        {
+            objectCreator.CreateNailObject();
+        }else if(gameObject.name == "Item - Vis")
+        {
+            objectCreator.CreateScrewObject();
+        }else if(gameObject.name == "Item - Bois")
+        {
+            // Ajouter la logique pour créer un écrou
+            Debug.Log("Create Bois Object - Not Implemented");
+        }
     }
     private void DeselectItem()
     {

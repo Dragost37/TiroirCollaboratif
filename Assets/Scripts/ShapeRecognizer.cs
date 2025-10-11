@@ -9,7 +9,7 @@ public class ShapeRecognizer : MonoBehaviour
     // Analyse une forme dessinée et détecte un carré ou un rectangle
     public void AnalyzeShape(List<Vector2> points)
     {
-        Debug.Log("Analyse de la forme dessinée avec " + points.Count + " points");
+        //Debug.Log("Analyse de la forme dessinée avec " + points.Count + " points");
 
 
         float minX = points[0].x, maxX = points[0].x;
@@ -27,7 +27,6 @@ public class ShapeRecognizer : MonoBehaviour
         float height = maxY - minY;
         if (width < 0.05f && height < 0.05f) // seuil à ajuster selon l’échelle de ton canvas
         {
-            Debug.Log("Forme trop petite (point) - ignorée");
             return;
         }
 

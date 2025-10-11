@@ -5,7 +5,7 @@ using UnityEngine.UI;
 public class MenuSelector : MonoBehaviour
 {
     public Button[] buttons;
-    public float radius = 200f;
+    public float radius = 250f;
     public Vector2 centerOffset = Vector2.zero;
 
     void Start()
