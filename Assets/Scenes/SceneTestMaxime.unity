@@ -656,7 +656,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PartDuplicator
   prefab: {fileID: 0}
   axisFrame: 0
-  requiredFingers: 2
+  requiredFingers: 4
   holdTime: 0.05
   axisPickMinMove: 0.01
   spacingOverride: 0
