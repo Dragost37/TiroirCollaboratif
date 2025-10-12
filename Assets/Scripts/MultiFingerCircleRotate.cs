@@ -7,6 +7,11 @@ public class MultiFingerCircleRotate : MonoBehaviour
     [Header("Target")]
     public Transform Target;
 
+    [Header("Auto-assign Target")]
+    public bool autoAssignIfNull = true;
+    public bool autoAssignOnSelect = true;
+    public bool useRootAsTarget = false;
+
     [Header("Gesture settings")]
     public int MinFingerCount = 2;
     public float Sensitivity = 1.0f;
@@ -20,7 +25,38 @@ public class MultiFingerCircleRotate : MonoBehaviour
     public float MinRadiusPixels = 10f;
     public bool SimulateWithMouse = true;
 
-    private readonly Dictionary<int, Vector2> ownedPrevPositions = new Dictionary<int, Vector2>();
+    [Header("Dessin à désactiver pendant la rotation")]
+    [Tooltip("Drag ici les scripts de dessin (Painter, LineDrawer, etc.) à couper pendant la rotation.")]
+    public Behaviour[] drawingToolsToDisable;
+
+    // --- Ownership global des doigts (un doigt -> un rotateur) ---
+    private static readonly Dictionary<int, MultiFingerCircleRotate> s_FingerOwners = new();
+
+    private static bool TryClaimFinger(int fingerId, MultiFingerCircleRotate owner)
+    {
+        if (s_FingerOwners.TryGetValue(fingerId, out var current))
+            return current == owner; // déjà à moi -> ok
+        s_FingerOwners[fingerId] = owner;
+        return true;
+    }
+
+    private static void ReleaseFinger(int fingerId, MultiFingerCircleRotate owner)
+    {
+        if (s_FingerOwners.TryGetValue(fingerId, out var current) && current == owner)
+            s_FingerOwners.Remove(fingerId);
+    }
+
+    private static void ReleaseAllFor(MultiFingerCircleRotate owner)
+    {
+        // libère tous les doigts détenus par cet objet
+        var toFree = new List<int>();
+        foreach (var kv in s_FingerOwners)
+            if (kv.Value == owner) toFree.Add(kv.Key);
+        foreach (var id in toFree) s_FingerOwners.Remove(id);
+    }
+
+    // --- Etat instance ---
+    private readonly Dictionary<int, Vector2> ownedPrevPositions = new();
     private Vector2 prevCenter = Vector2.zero;
     private Camera mainCamera;
     private resetToOriPos resetScript;
@@ -30,16 +66,37 @@ public class MultiFingerCircleRotate : MonoBehaviour
     private bool mouseActive = false;
     private Vector2 mouseScreenCenter;
 
-    void Reset()
-    {
-        Target = transform;
-    }
+    // À bloquer pendant la rotation (local au sous-arbre)
+    private PartDuplicator[] _duplicators;
+    private DraggablePart[]  _draggables;
+    private bool _dupDisabled  = false;
+    private bool _dragDisabled = false;
+    private bool _drawDisabled = false;
+
+    void Reset() { Target = transform; }
 
     void Start()
     {
-        if (!Target) Target = transform;
         mainCamera = Camera.main;
-        if (Target) resetScript = Target.GetComponent<resetToOriPos>();
+
+        if (autoAssignIfNull && !Target)
+            AssignTarget(useRootAsTarget ? transform.root : transform);
+        else
+            TryRefreshResetScript();
+
+        _duplicators = GetComponentsInChildren<PartDuplicator>(true);
+        _draggables  = GetComponentsInChildren<DraggablePart>(true);
+    }
+
+    void OnDisable()
+    {
+        EnableDuplication(true);
+        EnableDrag(true);
+        EnableDrawing(true);
+
+        // libère tous les doigts éventuellement détenus
+        ReleaseAllFor(this);
+        ownedPrevPositions.Clear();
     }
 
     void Update()
@@ -51,12 +108,15 @@ public class MultiFingerCircleRotate : MonoBehaviour
             return;
         }
 #endif
-
         ProcessTouchOwnership();
 
-        List<Touch> ownedTouches = GetOwnedActiveTouches();
+        var ownedTouches = GetOwnedActiveTouches();
+
         if (ownedTouches.Count < MinFingerCount)
         {
+            EnableDuplication(true);
+            EnableDrag(true);
+            EnableDrawing(true);
             prevCenter = ComputeCenter(ownedTouches);
             return;
         }
@@ -64,15 +124,24 @@ public class MultiFingerCircleRotate : MonoBehaviour
         Vector2 center = ComputeCenter(ownedTouches);
         if (!CenterHasEnoughRadius(ownedTouches, center))
         {
+            EnableDuplication(true);
+            EnableDrag(true);
+            EnableDrawing(true);
             prevCenter = center;
             return;
         }
+
+        // rotation valide en cours -> bloque dup/drag/dessin pour CE sous-arbre uniquement
+        EnableDuplication(false);
+        EnableDrag(false);
+        EnableDrawing(false);
 
         Vector3 totalRotation = Vector3.zero;
 
         foreach (var t in ownedTouches)
         {
             int id = t.fingerId;
+
             if (!ownedPrevPositions.ContainsKey(id))
             {
                 ownedPrevPositions[id] = t.position;
@@ -124,6 +193,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
 
     private void ProcessTouchOwnership()
     {
+        // Claim/release par phase
         for (int i = 0; i < Input.touchCount; i++)
         {
             Touch t = Input.touches[i];
@@ -132,28 +202,44 @@ public class MultiFingerCircleRotate : MonoBehaviour
             if (t.phase == TouchPhase.Began)
             {
                 if (RaycastHitThisObject(t.position))
-                    ownedPrevPositions[id] = t.position;
+                {
+                    // tente de réserver ce doigt : si déjà pris par un autre objet, on ignore
+                    if (TryClaimFinger(id, this))
+                    {
+                        if (autoAssignOnSelect)
+                        {
+                            var newTarget = useRootAsTarget ? transform.root : transform;
+                            if (Target != newTarget) AssignTarget(newTarget);
+                        }
+                        ownedPrevPositions[id] = t.position;
+                    }
+                }
             }
             else if (t.phase == TouchPhase.Ended || t.phase == TouchPhase.Canceled)
             {
                 if (ownedPrevPositions.ContainsKey(id))
                     ownedPrevPositions.Remove(id);
+                ReleaseFinger(id, this);
             }
         }
 
-        // purge des touches disparues
+        // purge des touches disparues (ex: perte d’événement)
         List<int> toRemove = null;
         foreach (int ownedId in ownedPrevPositions.Keys)
         {
             bool exists = false;
             for (int i = 0; i < Input.touchCount; i++)
                 if (Input.touches[i].fingerId == ownedId) { exists = true; break; }
-            if (!exists)
+            if (!exists) (toRemove ??= new List<int>()).Add(ownedId);
+        }
+        if (toRemove != null)
+        {
+            foreach (int id in toRemove)
             {
-                (toRemove ??= new List<int>()).Add(ownedId);
+                ownedPrevPositions.Remove(id);
+                ReleaseFinger(id, this);
             }
         }
-        if (toRemove != null) foreach (int id in toRemove) ownedPrevPositions.Remove(id);
     }
 
     private List<Touch> GetOwnedActiveTouches()
@@ -162,7 +248,10 @@ public class MultiFingerCircleRotate : MonoBehaviour
         for (int i = 0; i < Input.touchCount; i++)
         {
             var t = Input.touches[i];
-            if (ownedPrevPositions.ContainsKey(t.fingerId)) list.Add(t);
+            // je ne prends que les doigts que J’AI claim
+            if (s_FingerOwners.TryGetValue(t.fingerId, out var owner) && owner == this)
+                if (ownedPrevPositions.ContainsKey(t.fingerId))
+                    list.Add(t);
         }
         return list;
     }
@@ -174,7 +263,6 @@ public class MultiFingerCircleRotate : MonoBehaviour
         return Physics.Raycast(ray, out var hit) && hit.collider && hit.collider.gameObject == gameObject;
     }
 
-    // ✅ retourne le CENTRE (moyenne), pas la somme
     private Vector2 ComputeCenter(List<Touch> touches)
     {
         if (touches == null || touches.Count == 0) return Vector2.zero;
@@ -183,7 +271,6 @@ public class MultiFingerCircleRotate : MonoBehaviour
         return sum / touches.Count;
     }
 
-    // ✅ compare la MOYENNE du rayon au seuil
     private bool CenterHasEnoughRadius(List<Touch> touches, Vector2 center)
     {
         if (touches == null || touches.Count == 0) return false;
@@ -211,6 +298,57 @@ public class MultiFingerCircleRotate : MonoBehaviour
         }
     }
 
+    // ---------- Auto-assign helpers ----------
+    public void AssignTarget(Transform t)
+    {
+        Target = t;
+        TryRefreshResetScript();
+    }
+
+    private void TryRefreshResetScript()
+    {
+        resetScript = null;
+        if (Target) resetScript = Target.GetComponent<resetToOriPos>();
+    }
+
+    // ---------- Toggles (local au sous-arbre) ----------
+    private void EnableDuplication(bool enable)
+    {
+        if (_duplicators == null || _duplicators.Length == 0)
+            _duplicators = GetComponentsInChildren<PartDuplicator>(true);
+        if (_duplicators == null) return;
+
+        if (enable && !_dupDisabled) return;
+        if (!enable && _dupDisabled) return;
+
+        foreach (var d in _duplicators) if (d) d.enabled = enable;
+        _dupDisabled = !enable;
+    }
+
+    private void EnableDrag(bool enable)
+    {
+        if (_draggables == null || _draggables.Length == 0)
+            _draggables = GetComponentsInChildren<DraggablePart>(true);
+        if (_draggables == null) return;
+
+        if (enable && !_dragDisabled) return;
+        if (!enable && _dragDisabled) return;
+
+        foreach (var g in _draggables) if (g) g.enabled = enable;
+        _dragDisabled = !enable;
+    }
+
+    private void EnableDrawing(bool enable)
+    {
+        if (drawingToolsToDisable == null) return;
+
+        if (enable && !_drawDisabled) return;
+        if (!enable && _drawDisabled) return;
+
+        foreach (var b in drawingToolsToDisable) if (b) b.enabled = enable;
+        _drawDisabled = !enable;
+    }
+
     #region Mouse simulation (editor)
     private void HandleMouseSimulation()
     {
@@ -220,15 +358,19 @@ public class MultiFingerCircleRotate : MonoBehaviour
         {
             if (RaycastHitThisObject(Input.mousePosition))
             {
+                if (autoAssignOnSelect)
+                {
+                    var newTarget = useRootAsTarget ? transform.root : transform;
+                    if (Target != newTarget) AssignTarget(newTarget);
+                }
+
                 mouseActive = true;
                 lastMousePos = Input.mousePosition;
-
-                // ❌ new Vector2(Screen.width) -> ❎
-                // ✅ centre de l'écran :
                 mouseScreenCenter = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
-                // (alternative : centre de l'objet à l'écran)
-                // var sp = mainCamera.WorldToScreenPoint(Target ? Target.position : transform.position);
-                // mouseScreenCenter = new Vector2(sp.x, sp.y);
+
+                EnableDuplication(false);
+                EnableDrag(false);
+                EnableDrawing(false);
             }
             else
             {
@@ -238,6 +380,9 @@ public class MultiFingerCircleRotate : MonoBehaviour
         else if (Input.GetMouseButtonUp(0))
         {
             mouseActive = false;
+            EnableDuplication(true);
+            EnableDrag(true);
+            EnableDrawing(true);
         }
 
         if (!mouseActive) return;

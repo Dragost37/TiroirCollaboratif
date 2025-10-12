@@ -16,19 +16,19 @@ public class PartDuplicator : MonoBehaviour
     public AxisFrame axisFrame = AxisFrame.ScreenXY;
 
     [Header("Déclenchement")]
-    public int requiredFingers = 2;
-    public float holdTime = 0.05f;
-    public float axisPickMinMove = 0.01f;
+    public int   requiredFingers   = 2;
+    public float holdTime          = 0.05f;
+    public float axisPickMinMove   = 0.01f;
 
     [Header("Espacement & limites")]
-    public float spacingOverride = 0f;
-    public float separationMargin = 1f;
-    public int   maxPerStroke = 5;
-    public float minSpawnInterval = 0.05f;
+    public float spacingOverride   = 0f;
+    public float separationMargin  = 1f;
+    public int   maxPerStroke      = 5;
+    public float minSpawnInterval  = 0.05f;
 
     [Header("Bulle de capture (sécurité multi-user)")]
     public float captureRadiusFactor = 5f;
-    public bool  useDynamicCapture = true;
+    public bool  useDynamicCapture   = true;
     public float dynamicCaptureSlack = 0.05f;
 
     [Header("Intégration dessin")]
@@ -37,9 +37,35 @@ public class PartDuplicator : MonoBehaviour
 
     private Camera _cam;
 
-    private class Finger { public int id; public Vector2 screenPos; public bool beganOnThis; }
-    private readonly Dictionary<int, Finger> _fingers = new();
-    private readonly List<int> _captured = new(2);
+    // ---- Ownership global des doigts (un doigt -> un duplicateur) ----
+    private static readonly Dictionary<int, PartDuplicator> s_FingerOwners = new();
+
+    private static bool TryClaimFinger(int fingerId, PartDuplicator owner)
+    {
+        if (s_FingerOwners.TryGetValue(fingerId, out var current))
+            return current == owner; // déjà à moi -> OK
+        s_FingerOwners[fingerId] = owner;
+        return true;
+    }
+
+    private static void ReleaseFinger(int fingerId, PartDuplicator owner)
+    {
+        if (s_FingerOwners.TryGetValue(fingerId, out var current) && current == owner)
+            s_FingerOwners.Remove(fingerId);
+    }
+
+    private static void ReleaseAllFor(PartDuplicator owner)
+    {
+        var toFree = new List<int>();
+        foreach (var kv in s_FingerOwners)
+            if (kv.Value == owner) toFree.Add(kv.Key);
+        foreach (var id in toFree) s_FingerOwners.Remove(id);
+    }
+
+    // ----- Données instance -----
+    private class Finger { public int id; public Vector2 screenPos; }
+    private readonly Dictionary<int, Finger> _ownedFingers = new(); // doigts réellement "claim"
+    private readonly List<int> _captured = new(2);                  // sous-ensemble pour le geste
 
     // État duplication
     private bool  _armed;
@@ -65,7 +91,7 @@ public class PartDuplicator : MonoBehaviour
     private Vector3 _captureCenterW;
     private float   _captureRadiusW;
 
-    // --- NEW: source utilisée à l'exécution ---
+    // Source runtime
     private GameObject _runtimeSource;
 
     private void Awake()
@@ -83,7 +109,10 @@ public class PartDuplicator : MonoBehaviour
             mt.OnTouchMoved  += Moved;
             mt.OnTouchEnded  += Ended;
         }
-        else Debug.LogWarning("[PartDuplicator] MultiTouchManager.Instance est null.");
+        else
+        {
+            Debug.LogWarning("[PartDuplicator] MultiTouchManager.Instance est null.");
+        }
     }
 
     private void OnDisable()
@@ -95,32 +124,45 @@ public class PartDuplicator : MonoBehaviour
             mt.OnTouchMoved  -= Moved;
             mt.OnTouchEnded  -= Ended;
         }
+
+        // Sécurités locale et globale
         if (_drag) _drag.enabled = true;
-        if (drawingTool) drawingTool.enabled = true;   // re-sécurise le dessin
+        if (drawingTool) drawingTool.enabled = true;
+        ReleaseAllFor(this);
         ResetState();
     }
 
+    // ----------------- Events -----------------
+
     private void Began(MultiTouchManager.TouchEvt e)
     {
-        var f = new Finger { id = e.fingerId, screenPos = e.position, beganOnThis = IsOverThis(e.position) };
-        _fingers[e.fingerId] = f;
+        // On ne s'intéresse qu’aux touch qui frappent CET objet
+        if (!IsOverThis(e.position)) return;
 
-        if (_captured.Count < requiredFingers && f.beganOnThis)
+        // Tenter de réserver ce doigt. Si déjà pris par un autre duplicateur → on ignore.
+        if (!TryClaimFinger(e.fingerId, this)) return;
+
+        // Enregistrer ce doigt comme "owned"
+        _ownedFingers[e.fingerId] = new Finger { id = e.fingerId, screenPos = e.position };
+
+        // Ajouter aux "captured" jusqu’à atteindre le quota
+        if (_captured.Count < requiredFingers)
         {
             _captured.Add(e.fingerId);
 
             if (_captured.Count == requiredFingers)
             {
-                // --- NEW: auto-assign de la source runtime ---
+                // Source runtime
                 _runtimeSource = autoUseSelfAsSourceOnSelect ? gameObject : (prefab ? prefab : gameObject);
 
-                // Désactive drag + dessin pendant l’opération
+                // Désactiver le drag & le dessin localement pendant le trait
                 if (_drag) _drag.enabled = false;
                 if (drawingTool) drawingTool.enabled = false;
 
                 _downTime = Time.time;
-                _armed = false;
+                _armed    = false;
 
+                // Plan de geste
                 _plane = (axisFrame == AxisFrame.ScreenXY)
                     ? new Plane(-_cam.transform.forward, transform.position)
                     : new Plane(Vector3.forward, new Vector3(transform.position.x, transform.position.y, transform.position.z));
@@ -128,21 +170,24 @@ public class PartDuplicator : MonoBehaviour
                 _startW  = ScreenToWorldOnPlane(GetCapturedCentroid(), _plane);
                 _originW = transform.position;
 
+                // Bulle de capture
                 ComputeCaptureBubble(out _captureCenterW, out _captureRadiusW);
 
-                _axisChosen   = false;
-                _nextIndex    = 1;
-                _spawned      = 0;
-                _lastSpawnTime = -999f;
-                _duplicating  = true;
+                _axisChosen     = false;
+                _nextIndex      = 1;
+                _spawned        = 0;
+                _lastSpawnTime  = -999f;
+                _duplicating    = true;
             }
         }
     }
 
     private void Moved(MultiTouchManager.TouchEvt e)
     {
-        if (_fingers.TryGetValue(e.fingerId, out var f))
-            f.screenPos = e.position;
+        // On ne traite que les doigts que NOUS possédons
+        if (!_ownedFingers.TryGetValue(e.fingerId, out var f)) return;
+
+        f.screenPos = e.position;
 
         if (!_duplicating) return;
 
@@ -168,17 +213,19 @@ public class PartDuplicator : MonoBehaviour
                 var up    = _cam.transform.up;
                 float dr = Mathf.Abs(Vector3.Dot(delta.normalized, right));
                 float du = Mathf.Abs(Vector3.Dot(delta.normalized, up));
-                _axisDir = (dr >= du) ? Mathf.Sign(Vector3.Dot(delta, right)) * right
-                                      : Mathf.Sign(Vector3.Dot(delta, up))   * up;
+                _axisDir = (dr >= du)
+                    ? Mathf.Sign(Vector3.Dot(delta, right)) * right
+                    : Mathf.Sign(Vector3.Dot(delta, up))    * up;
             }
-            else
+            else // WorldXY
             {
                 var right = Vector3.right;
                 var up    = Vector3.up;
                 float dr = Mathf.Abs(Vector3.Dot(delta.normalized, right));
                 float du = Mathf.Abs(Vector3.Dot(delta.normalized, up));
-                _axisDir = (dr >= du) ? Mathf.Sign(Vector3.Dot(delta, right)) * right
-                                      : Mathf.Sign(Vector3.Dot(delta, up))   * up;
+                _axisDir = (dr >= du)
+                    ? Mathf.Sign(Vector3.Dot(delta, right)) * right
+                    : Mathf.Sign(Vector3.Dot(delta, up))    * up;
             }
 
             _step = ComputeModelLengthAlong(_axisDir.normalized) + separationMargin;
@@ -210,18 +257,27 @@ public class PartDuplicator : MonoBehaviour
 
     private void Ended(MultiTouchManager.TouchEvt e)
     {
-        _fingers.Remove(e.fingerId);
-        if (_captured.Contains(e.fingerId)) FinishDuplication();
+        // Si ce doigt n'était pas à moi, j'ignore
+        bool wasOwned = _ownedFingers.Remove(e.fingerId);
+        ReleaseFinger(e.fingerId, this);
+
+        if (!wasOwned) return;
+
+        // Si c’était un doigt capturé, on stoppe le trait
+        if (_captured.Contains(e.fingerId))
+            FinishDuplication();
     }
 
-    // ---------- Helpers ----------
+    // ----------------- Helpers -----------------
 
     private Vector2 GetCapturedCentroid()
     {
         if (_captured.Count == 0) return Vector2.zero;
         Vector2 sum = Vector2.zero; int count = 0;
         foreach (var id in _captured)
-            if (_fingers.TryGetValue(id, out var f)) { sum += f.screenPos; count++; }
+        {
+            if (_ownedFingers.TryGetValue(id, out var f)) { sum += f.screenPos; count++; }
+        }
         return count > 0 ? sum / count : Vector2.zero;
     }
 
@@ -260,9 +316,12 @@ public class PartDuplicator : MonoBehaviour
 
         foreach (var id in _captured)
         {
-            if (!_fingers.TryGetValue(id, out var f)) return false;
+            if (!_ownedFingers.TryGetValue(id, out var f)) return false;
+
+            // OK si encore sur l'objet
             if (IsOverThis(f.screenPos)) continue;
 
+            // Sinon, dans le plan, doit rester dans la bulle
             var pw = ScreenToWorldOnPlane(f.screenPos, _plane);
             if (Vector3.Distance(pw, _captureCenterW) > dynRadius) return false;
         }
@@ -282,7 +341,6 @@ public class PartDuplicator : MonoBehaviour
 
     private void SpawnCloneAt(Vector3 pos, Quaternion rot)
     {
-        // --- utilise la source runtime (auto-assign) ---
         var source = _runtimeSource ? _runtimeSource : (prefab ? prefab : gameObject);
         var parent = transform.parent;
         var clone  = Instantiate(source, pos, rot, parent);
@@ -297,7 +355,12 @@ public class PartDuplicator : MonoBehaviour
     private void FinishDuplication()
     {
         if (_drag)       _drag.enabled = true;
-        if (drawingTool) drawingTool.enabled = true;   // réactive le dessin
+        if (drawingTool) drawingTool.enabled = true;
+
+        // on libère les doigts capturés (ceux réellement détenus)
+        foreach (var id in _captured)
+            ReleaseFinger(id, this);
+
         ResetState();
     }
 
@@ -311,5 +374,6 @@ public class PartDuplicator : MonoBehaviour
         _nextIndex = 1;
         _spawned = 0;
         _lastSpawnTime = -999f;
+        _ownedFingers.Clear();
     }
 }

@@ -387,7 +387,7 @@ MonoBehaviour:
   TangentAlignmentThreshold: 0.7
   RotateX: 1
   RotateY: 1
-  RotateZ: 1
+  RotateZ: 0
   UseWorldSpace: 1
   MinRadiusPixels: 10
   SimulateWithMouse: 1
