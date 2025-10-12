@@ -2,6 +2,7 @@ using UnityEngine;
 using System;
 using System.Collections.Generic;
 
+[DefaultExecutionOrder(-10000)]
 public class MultiTouchManager : MonoBehaviour
 {
     public static MultiTouchManager Instance { get; private set; }
@@ -17,16 +18,33 @@ public class MultiTouchManager : MonoBehaviour
     public event Action<TouchEvt> OnTouchEnded;
 
     private readonly Dictionary<int, Vector2> _lastPos = new();
-    private int _mouseFingerId = 9999;
+    private const int _mouseFingerId = 9999;
 
-    void Awake(){ if(Instance!=null){ Destroy(gameObject); return; } Instance=this; }
+    // --- Auto-spawn avant le chargement de la 1ère scène ---
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    static void EnsureExists()
+    {
+        if (Instance == null)
+        {
+            var go = new GameObject("MultiTouchManager");
+            go.AddComponent<MultiTouchManager>();
+            DontDestroyOnLoad(go);
+        }
+    }
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+    }
 
     void Update()
     {
-        // 1) Native touches
+        // 1) Touch natif
         foreach (var t in Input.touches)
         {
-            var delta = _lastPos.ContainsKey(t.fingerId) ? t.position - _lastPos[t.fingerId] : Vector2.zero;
+            var delta = _lastPos.TryGetValue(t.fingerId, out var last) ? t.position - last : Vector2.zero;
             var evt = new TouchEvt(t.fingerId, t.position, delta, t.phase);
             switch (t.phase)
             {
@@ -40,7 +58,7 @@ public class MultiTouchManager : MonoBehaviour
             if (t.phase == TouchPhase.Ended || t.phase == TouchPhase.Canceled) _lastPos.Remove(t.fingerId);
         }
 
-        // 2) Mouse (debug) – left button as pseudo-touch
+        // 2) Souris (debug)
         if (Input.touchCount == 0)
         {
             if (Input.GetMouseButtonDown(0))
@@ -48,9 +66,9 @@ public class MultiTouchManager : MonoBehaviour
                 var pos = (Vector2)Input.mousePosition; _lastPos[_mouseFingerId] = pos;
                 OnTouchBegan?.Invoke(new TouchEvt(_mouseFingerId, pos, Vector2.zero, TouchPhase.Began));
             }
-            else if (Input.GetMouseButton(0))
+            else if (Input.GetMouseButton(0) && _lastPos.TryGetValue(_mouseFingerId, out var last))
             {
-                var pos = (Vector2)Input.mousePosition; var delta = pos - _lastPos[_mouseFingerId];
+                var pos = (Vector2)Input.mousePosition; var delta = pos - last;
                 OnTouchMoved?.Invoke(new TouchEvt(_mouseFingerId, pos, delta, TouchPhase.Moved));
                 _lastPos[_mouseFingerId] = pos;
             }
