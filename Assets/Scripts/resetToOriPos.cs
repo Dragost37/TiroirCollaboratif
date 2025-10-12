@@ -59,7 +59,7 @@ public class resetToOriPos : MonoBehaviour
             while (elapsed < resetDuration)
             {
                 elapsed += Time.deltaTime;
-                float normalizedTime = Mathf.Clamp01(elapsed
+                float normalizedTime = Mathf.Clamp01(elapsed);
                 float curveValue = resetCurve.Evaluate(normalizedTime);
 
                 transform.rotation = Quaternion.Slerp(startRotation, originalRotation, curveValue);
