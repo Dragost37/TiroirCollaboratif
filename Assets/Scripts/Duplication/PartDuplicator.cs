@@ -7,37 +7,33 @@ public class PartDuplicator : MonoBehaviour
     public enum AxisFrame { ScreenXY, WorldXY }
 
     [Header("Source")]
-    [Tooltip("Prefab à instancier. Laisser vide pour dupliquer ce GameObject.")]
+    [Tooltip("Prefab à instancier. Laisser vide pour dupliquer CE GameObject.")]
     public GameObject prefab;
+    [Tooltip("Si coché, la source utilisée sera automatiquement cet objet au moment de la sélection.")]
+    public bool autoUseSelfAsSourceOnSelect = true;
 
     [Header("Cadre d'axes")]
     public AxisFrame axisFrame = AxisFrame.ScreenXY;
 
     [Header("Déclenchement")]
-    [Tooltip("Deux doigts doivent commencer sur CET objet.")]
     public int requiredFingers = 2;
-    [Tooltip("Durée minimale (s) de maintien avant d'armer la duplication.")]
     public float holdTime = 0.05f;
-    [Tooltip("Distance min (m) pour choisir l'axe après le hold.")]
     public float axisPickMinMove = 0.01f;
 
     [Header("Espacement & limites")]
-    [Tooltip("Si > 0, force l'espacement. Si = 0, calcul automatique depuis la taille du modèle.")]
     public float spacingOverride = 0f;
-    [Tooltip("Marge additionnelle anti chevauchement (m).")]
-    public float separationMargin = 2f;
-    [Tooltip("Nombre max de clones par trait.")]
-    public int maxPerStroke = 5;
-    [Tooltip("Délai minimal (s) entre deux spawns, anti-rafale.")]
+    public float separationMargin = 1f;
+    public int   maxPerStroke = 5;
     public float minSpawnInterval = 0.05f;
 
     [Header("Bulle de capture (sécurité multi-user)")]
-    [Tooltip("Rayon = taille_boundingBox * facteur. Sert de rayon de base.")]
     public float captureRadiusFactor = 5f;
-    [Tooltip("Active une bulle dynamique qui s'étire avec le geste.")]
-    public bool useDynamicCapture = false;
-    [Tooltip("Marge (m) ajoutée au rayon dynamique pour plus de tolérance.")]
+    public bool  useDynamicCapture = true;
     public float dynamicCaptureSlack = 0.05f;
+
+    [Header("Intégration dessin")]
+    [Tooltip("Composant de dessin à désactiver pendant la duplication (ex: LineDrawer, Painter, etc.).")]
+    public Behaviour drawingTool;
 
     private Camera _cam;
 
@@ -46,32 +42,35 @@ public class PartDuplicator : MonoBehaviour
     private readonly List<int> _captured = new(2);
 
     // État duplication
-    private bool _armed;
-    private bool _duplicating;
+    private bool  _armed;
+    private bool  _duplicating;
     private float _downTime;
 
     // Plan & repères
-    private Plane _plane;
+    private Plane   _plane;
     private Vector3 _startW;
     private Vector3 _originW;
 
     // Axe & crans
-    private bool _axisChosen;
-    private Vector3 _axisDir;   // X+/X-/Y+/Y-
-    private float _step;        // espacement effectif (auto/override) + marge
-    private int _nextIndex;     // cran attendu (1,2,...)
-    private int _spawned;       // nb clones ce trait
-    private float _lastSpawnTime;
+    private bool    _axisChosen;
+    private Vector3 _axisDir;
+    private float   _step;
+    private int     _nextIndex;
+    private int     _spawned;
+    private float   _lastSpawnTime;
 
     private DraggablePart _drag;
 
     // Capture bubble
     private Vector3 _captureCenterW;
-    private float _captureRadiusW;
+    private float   _captureRadiusW;
+
+    // --- NEW: source utilisée à l'exécution ---
+    private GameObject _runtimeSource;
 
     private void Awake()
     {
-        _cam = Camera.main;
+        _cam  = Camera.main;
         _drag = GetComponent<DraggablePart>();
     }
 
@@ -97,6 +96,7 @@ public class PartDuplicator : MonoBehaviour
             mt.OnTouchEnded  -= Ended;
         }
         if (_drag) _drag.enabled = true;
+        if (drawingTool) drawingTool.enabled = true;   // re-sécurise le dessin
         ResetState();
     }
 
@@ -111,6 +111,13 @@ public class PartDuplicator : MonoBehaviour
 
             if (_captured.Count == requiredFingers)
             {
+                // --- NEW: auto-assign de la source runtime ---
+                _runtimeSource = autoUseSelfAsSourceOnSelect ? gameObject : (prefab ? prefab : gameObject);
+
+                // Désactive drag + dessin pendant l’opération
+                if (_drag) _drag.enabled = false;
+                if (drawingTool) drawingTool.enabled = false;
+
                 _downTime = Time.time;
                 _armed = false;
 
@@ -123,13 +130,11 @@ public class PartDuplicator : MonoBehaviour
 
                 ComputeCaptureBubble(out _captureCenterW, out _captureRadiusW);
 
-                if (_drag) _drag.enabled = false;
-
-                _axisChosen = false;
-                _nextIndex = 1;
-                _spawned = 0;
+                _axisChosen   = false;
+                _nextIndex    = 1;
+                _spawned      = 0;
                 _lastSpawnTime = -999f;
-                _duplicating = true;
+                _duplicating  = true;
             }
         }
     }
@@ -151,7 +156,7 @@ public class PartDuplicator : MonoBehaviour
 
         var currW = ScreenToWorldOnPlane(GetCapturedCentroid(), _plane);
         var delta = currW - _startW;
-        var dist = delta.magnitude;
+        var dist  = delta.magnitude;
 
         if (!_axisChosen)
         {
@@ -183,7 +188,7 @@ public class PartDuplicator : MonoBehaviour
             _axisChosen = true;
         }
 
-        float signed = Vector3.Dot(currW - _originW, _axisDir.normalized);
+        float signed     = Vector3.Dot(currW - _originW, _axisDir.normalized);
         float targetDist = _nextIndex * _step;
 
         if (signed >= targetDist && _spawned < maxPerStroke && (Time.time - _lastSpawnTime) >= minSpawnInterval)
@@ -216,9 +221,7 @@ public class PartDuplicator : MonoBehaviour
         if (_captured.Count == 0) return Vector2.zero;
         Vector2 sum = Vector2.zero; int count = 0;
         foreach (var id in _captured)
-        {
             if (_fingers.TryGetValue(id, out var f)) { sum += f.screenPos; count++; }
-        }
         return count > 0 ? sum / count : Vector2.zero;
     }
 
@@ -238,12 +241,7 @@ public class PartDuplicator : MonoBehaviour
     private void ComputeCaptureBubble(out Vector3 centerW, out float radiusW)
     {
         var rends = GetComponentsInChildren<Renderer>();
-        if (rends.Length == 0)
-        {
-            centerW = transform.position;
-            radiusW = 0.1f;
-            return;
-        }
+        if (rends.Length == 0) { centerW = transform.position; radiusW = 0.1f; return; }
         var b = rends[0].bounds;
         for (int i = 1; i < rends.Length; i++) b.Encapsulate(rends[i].bounds);
         centerW = b.center;
@@ -276,19 +274,18 @@ public class PartDuplicator : MonoBehaviour
         dir = dir.normalized;
         var rends = GetComponentsInChildren<Renderer>();
         if (rends.Length == 0) return 0.05f;
-
         var b = rends[0].bounds;
         for (int i = 1; i < rends.Length; i++) b.Encapsulate(rends[i].bounds);
-
         var ad = new Vector3(Mathf.Abs(dir.x), Mathf.Abs(dir.y), Mathf.Abs(dir.z));
         return 2f * Vector3.Dot(ad, b.extents);
     }
 
     private void SpawnCloneAt(Vector3 pos, Quaternion rot)
     {
-        var source = prefab ? prefab : gameObject;
+        // --- utilise la source runtime (auto-assign) ---
+        var source = _runtimeSource ? _runtimeSource : (prefab ? prefab : gameObject);
         var parent = transform.parent;
-        var clone = Instantiate(source, pos, rot, parent);
+        var clone  = Instantiate(source, pos, rot, parent);
         clone.name = source.name.Replace("(Clone)", "").Trim() + " (Clone)";
 
         var audio = clone.GetComponent<AudioSource>();
@@ -299,12 +296,14 @@ public class PartDuplicator : MonoBehaviour
 
     private void FinishDuplication()
     {
-        if (_drag) _drag.enabled = true;
+        if (_drag)       _drag.enabled = true;
+        if (drawingTool) drawingTool.enabled = true;   // réactive le dessin
         ResetState();
     }
 
     private void ResetState()
     {
+        _runtimeSource = null;
         _captured.Clear();
         _armed = false;
         _duplicating = false;

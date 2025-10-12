@@ -4,25 +4,31 @@ using UnityEngine;
 public class DraggablePart : MonoBehaviour
 {
     [Header("Snap")]
-    [Tooltip("Doit correspondre au SnapPoint.snapTag")]
     public string compatibleSnapTag;
-    [Tooltip("Distance max pour autoriser l'accroche (mètres)")]
     public float snapDistance = 0.08f;
-    [Tooltip("Angle max (degrés) entre la rotation de la pièce et du point d'accroche")]
     public float snapAngle = 15f;
+
+    [Header("Dessin")]
+    public Behaviour drawingTool;
 
     private bool _dragging;
     private int _fingerId = -1;
     private Vector3 _grabOffset;
     private Camera _cam;
 
-    // Verrouillage de la profondeur (Z)
-    private float _zDistScreen;  // distance objet-caméra en espace écran
-    private float _initialZ;     // Z monde à conserver
+    // Projection sur un plan parallèle à l'écran (répare le "X seulement")
+    private Plane _dragPlane;
+
+    // Gestion Rigidbody (répare la physique qui fige Y)
+    private Rigidbody _rb;
+    private bool _hadRb;
+    private bool _rbWasKinematic;
+    private RigidbodyConstraints _rbSavedConstraints;
 
     private void Awake()
     {
         _cam = Camera.main;
+        _hadRb = TryGetComponent(out _rb);
     }
 
     private void OnEnable()
@@ -46,16 +52,18 @@ public class DraggablePart : MonoBehaviour
         if (mt != null)
         {
             mt.OnTouchBegan -= OnTouchBegan;
-            mt.OnTouchMoved -= OnTouchMoved;
-            mt.OnTouchEnded -= OnTouchEnded;
+            mt.OnTouchMoved  -= OnTouchMoved;
+            mt.OnTouchEnded  -= OnTouchEnded;
         }
+
+        if (drawingTool) drawingTool.enabled = true;
+        RestoreRigidbody();
     }
 
     private void OnTouchBegan(MultiTouchManager.TouchEvt e)
     {
-        // 👉 Ne pas commencer de drag si plusieurs doigts sont posés
         if (_dragging || _cam == null) return;
-        if (Input.touchCount > 1) return;  // <--- sécurité multitouch
+        if (Input.touchCount > 1) return; // on évite les conflits à 2 doigts
 
         var ray = _cam.ScreenPointToRay(e.position);
         if (Physics.Raycast(ray, out var hit) && hit.collider && hit.collider.gameObject == gameObject)
@@ -63,13 +71,23 @@ public class DraggablePart : MonoBehaviour
             _dragging = true;
             _fingerId = e.fingerId;
 
-            // Point d’accroche précis sur le mesh
+            if (drawingTool) drawingTool.enabled = false;
+
+            // point précis d'accroche
             var wp = hit.point;
             _grabOffset = transform.position - wp;
 
-            // Conserver la profondeur (Z) et mémoriser la distance écran
-            _initialZ = transform.position.z;
-            _zDistScreen = _cam.WorldToScreenPoint(transform.position).z;
+            // plan de drag parallèle à l'écran, passant par la pièce
+            _dragPlane = new Plane(-_cam.transform.forward, transform.position);
+
+            // neutraliser la physique pendant le drag
+            if (_hadRb && _rb != null)
+            {
+                _rbWasKinematic      = _rb.isKinematic;
+                _rbSavedConstraints  = _rb.constraints;
+                _rb.isKinematic      = true;         // la physique ne retouche plus la position
+                _rb.constraints      = RigidbodyConstraints.None;
+            }
         }
     }
 
@@ -77,13 +95,16 @@ public class DraggablePart : MonoBehaviour
     {
         if (!_dragging || e.fingerId != _fingerId || _cam == null) return;
 
-        // Conversion position écran -> monde à Z constant
-        var screen = new Vector3(e.position.x, e.position.y, _zDistScreen);
-        var worldUnderFinger = _cam.ScreenToWorldPoint(screen);
+        // Ray écran -> intersection avec le plan de drag
+        var ray = _cam.ScreenPointToRay(e.position);
+        if (_dragPlane.Raycast(ray, out var t))
+        {
+            var worldUnderFinger = ray.GetPoint(t);
+            var newPos = worldUnderFinger + _grabOffset;
 
-        var newPos = worldUnderFinger + _grabOffset;
-        newPos.z = _initialZ; // verrouillage profondeur
-        transform.position = newPos;
+            // NOTE : on ne verrouille plus Z ; le plan garantit un mouvement XY écran
+            transform.position = newPos;
+        }
     }
 
     private void OnTouchEnded(MultiTouchManager.TouchEvt e)
@@ -93,7 +114,19 @@ public class DraggablePart : MonoBehaviour
         _dragging = false;
         _fingerId = -1;
 
+        if (drawingTool) drawingTool.enabled = true;
+        RestoreRigidbody();
+
         TrySnap();
+    }
+
+    private void RestoreRigidbody()
+    {
+        if (_hadRb && _rb != null)
+        {
+            _rb.isKinematic = _rbWasKinematic;
+            _rb.constraints = _rbSavedConstraints;
+        }
     }
 
     private void TrySnap()

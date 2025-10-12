@@ -10,7 +10,8 @@ GameObject:
   m_Component:
   - component: {fileID: 7252074122777733509}
   - component: {fileID: 8220699408995116094}
-  - component: {fileID: 7951492636151961635}
+  - component: {fileID: 7182053776104015651}
+  - component: {fileID: 6319388784898816646}
   m_Layer: 0
   m_Name: GameObjectScripts
   m_TagString: Untagged
@@ -54,7 +55,7 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &7951492636151961635
+--- !u!114 &7182053776104015651
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -63,9 +64,33 @@ MonoBehaviour:
   m_GameObject: {fileID: 8240041568434129777}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f7c51a708508e5046b601102974a610b, type: 3}
+  m_Script: {fileID: 11500000, guid: c96b3201ba6b59c45ba981650df8c907, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PartController
+  m_EditorClassIdentifier: Assembly-CSharp::DraggablePart
   compatibleSnapTag: 
   snapDistance: 0.08
   snapAngle: 15
+--- !u!114 &6319388784898816646
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8240041568434129777}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 64bd6215d0194b445a7826982e68f81d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PartDuplicator
+  prefab: {fileID: 0}
+  axisFrame: 0
+  requiredFingers: 2
+  holdTime: 0.05
+  axisPickMinMove: 0.01
+  spacingOverride: 0
+  separationMargin: 2
+  maxPerStroke: 5
+  minSpawnInterval: 0.05
+  captureRadiusFactor: 5
+  useDynamicCapture: 0
+  dynamicCaptureSlack: 0.05

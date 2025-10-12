@@ -135,6 +135,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: '::'
   radialMenu: {fileID: 8136423796007783907}
+  objectCreator: {fileID: 0}
 --- !u!1 &158080540915070357
 GameObject:
   m_ObjectHideFlags: 0
@@ -270,6 +271,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: '::'
   radialMenu: {fileID: 8136423796007783907}
+  objectCreator: {fileID: 0}
 --- !u!1 &556476496343549303
 GameObject:
   m_ObjectHideFlags: 0
@@ -480,6 +482,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: '::'
   radialMenu: {fileID: 8136423796007783907}
+  objectCreator: {fileID: 0}
 --- !u!1 &7514551625023643140
 GameObject:
   m_ObjectHideFlags: 0
