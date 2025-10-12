@@ -1,12 +1,15 @@
 using UnityEngine;
 
 [RequireComponent(typeof(Collider))]
-public class PartController : MonoBehaviour
+public class DraggablePart : MonoBehaviour
 {
     [Header("Snap")]
+    [Tooltip("Doit correspondre au SnapPoint.snapTag")]
     public string compatibleSnapTag;
-    public float snapDistance = 0.08f; // en mètres
-    public float snapAngle = 15f;      // en degrés
+    [Tooltip("Distance max pour autoriser l'accroche (mÃ¨tres)")]
+    public float snapDistance = 0.08f;
+    [Tooltip("Angle max (degrÃ©s) entre la rotation de la piÃ¨ce et du point d'accroche")]
+    public float snapAngle = 15f;
 
     private bool _dragging;
     private int _fingerId = -1;
@@ -14,73 +17,76 @@ public class PartController : MonoBehaviour
     private Camera _cam;
 
     // Verrouillage de la profondeur (Z)
-    private float _zDistScreen;  // distance objet-caméra en espace écran
-    private float _initialZ;     // Z monde à conserver
+    private float _zDistScreen;  // distance objet-camÃ©ra en espace Ã©cran
+    private float _initialZ;     // Z monde Ã  conserver
 
-    void Start()
+    private void Awake()
     {
         _cam = Camera.main;
+    }
+
+    private void OnEnable()
+    {
         var mt = MultiTouchManager.Instance;
         if (mt != null)
         {
-            mt.OnTouchBegan += B;
-            mt.OnTouchMoved += M;
-            mt.OnTouchEnded += E;
+            mt.OnTouchBegan += OnTouchBegan;
+            mt.OnTouchMoved += OnTouchMoved;
+            mt.OnTouchEnded += OnTouchEnded;
         }
         else
         {
-            Debug.LogWarning("[PartController] MultiTouchManager.Instance est null.");
+            Debug.LogWarning("[DraggablePart] MultiTouchManager.Instance est null.");
         }
     }
 
-    void OnDestroy()
+    private void OnDisable()
     {
         var mt = MultiTouchManager.Instance;
         if (mt != null)
         {
-            mt.OnTouchBegan -= B;
-            mt.OnTouchMoved -= M;
-            mt.OnTouchEnded -= E;
+            mt.OnTouchBegan -= OnTouchBegan;
+            mt.OnTouchMoved -= OnTouchMoved;
+            mt.OnTouchEnded -= OnTouchEnded;
         }
     }
 
-    void B(MultiTouchManager.TouchEvt e)
+    private void OnTouchBegan(MultiTouchManager.TouchEvt e)
     {
+        // ðŸ‘‰ Ne pas commencer de drag si plusieurs doigts sont posÃ©s
         if (_dragging || _cam == null) return;
+        if (Input.touchCount > 1) return;  // <--- sÃ©curitÃ© multitouch
 
         var ray = _cam.ScreenPointToRay(e.position);
-        if (Physics.Raycast(ray, out var hit) && hit.collider != null && hit.collider.gameObject == gameObject)
+        if (Physics.Raycast(ray, out var hit) && hit.collider && hit.collider.gameObject == gameObject)
         {
             _dragging = true;
             _fingerId = e.fingerId;
 
-            // Point d’accroche précis sur le mesh
+            // Point dâ€™accroche prÃ©cis sur le mesh
             var wp = hit.point;
             _grabOffset = transform.position - wp;
 
-            // Conserver la profondeur (Z) et mémoriser la distance écran
+            // Conserver la profondeur (Z) et mÃ©moriser la distance Ã©cran
             _initialZ = transform.position.z;
             _zDistScreen = _cam.WorldToScreenPoint(transform.position).z;
         }
     }
 
-    void M(MultiTouchManager.TouchEvt e)
+    private void OnTouchMoved(MultiTouchManager.TouchEvt e)
     {
         if (!_dragging || e.fingerId != _fingerId || _cam == null) return;
 
-        // Conversion position écran -> monde à Z constant
+        // Conversion position Ã©cran -> monde Ã  Z constant
         var screen = new Vector3(e.position.x, e.position.y, _zDistScreen);
         var worldUnderFinger = _cam.ScreenToWorldPoint(screen);
 
         var newPos = worldUnderFinger + _grabOffset;
-
-        // Verrouillage de la profondeur : on garde exactement le même Z monde
-        newPos.z = _initialZ;
-
+        newPos.z = _initialZ; // verrouillage profondeur
         transform.position = newPos;
     }
 
-    void E(MultiTouchManager.TouchEvt e)
+    private void OnTouchEnded(MultiTouchManager.TouchEvt e)
     {
         if (!_dragging || e.fingerId != _fingerId) return;
 
@@ -90,9 +96,8 @@ public class PartController : MonoBehaviour
         TrySnap();
     }
 
-    void TrySnap()
+    private void TrySnap()
     {
-        // Recherche directe des composants SnapPoint (pas besoin de Tag Unity)
 #if UNITY_2023_1_OR_NEWER
         var snaps = Object.FindObjectsByType<SnapPoint>(FindObjectsSortMode.None);
 #else
@@ -121,30 +126,8 @@ public class PartController : MonoBehaviour
             {
                 transform.position = best.transform.position;
                 transform.rotation = best.transform.rotation;
-                best.OnSnapped(this);
+                best.OnSnapped(gameObject);
             }
         }
-    }
-}
-
-public class SnapPoint : MonoBehaviour
-{
-    [Header("Identification")]
-    public string snapTag;
-
-    [Header("État")]
-    public bool occupied;
-
-    public void OnSnapped(PartController part)
-    {
-        occupied = true;
-
-        // Feedback audio local (optionnel si un AudioSource est présent)
-        var audio = GetComponent<AudioSource>();
-        if (audio) audio.Play();
-
-        // Notifier le gestionnaire d'assemblage si présent
-        var asm = FindObjectOfType<AssemblyManager>();
-        if (asm) asm.ValidateStep(part.gameObject);
     }
 }
