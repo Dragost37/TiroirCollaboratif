@@ -81,7 +81,7 @@ public class ObjectCreator : MonoBehaviour
 
         newScrew.SetActive(true);
 
-        newScrew.transform.position = new Vector3(2.5f, -3.5f, 0);
+        newScrew.transform.position = new Vector3(0, 0.5f, 0);
         newScrew.transform.rotation = Quaternion.Euler(90, 0, 0);
 
         // Ajouter les scripts communs si nécessaire
