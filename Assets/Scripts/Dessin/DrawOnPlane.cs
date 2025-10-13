@@ -5,12 +5,21 @@ using System.Collections.Generic;
 [RequireComponent(typeof(Renderer))]
 public class DrawOnPlane : MonoBehaviour
 {
+    [Header("Brush")]
     public int textureSize = 1024;
     public Color drawColor = Color.black;
     public float brushSize = 2f;
 
-    private Texture2D texture;
+    [Header("Texture Source")]
+    [Tooltip("Si défini, sera utilisée comme base (clonée en texture dessinable). Sinon on prend la texture actuelle du material.")]
+    public Texture sourceTexture;
+    [Tooltip("Garder la taille de la texture source si disponible.")]
+    public bool keepSourceSize = true;
+    [Tooltip("Nom de la propriété texture du shader (_MainTex pour Built-in, _BaseMap pour URP).")]
+    public string texturePropertyName = "_MainTex";
+
     private Renderer rend;
+    private Texture2D texture; // <-- manquait dans le script d'origine
 
     private Dictionary<int, Vector2?> lastDrawPositions = new Dictionary<int, Vector2?>();
     public Dictionary<int, List<Vector2>> drawPaths = new Dictionary<int, List<Vector2>>();
@@ -20,9 +29,49 @@ public class DrawOnPlane : MonoBehaviour
     void Start()
     {
         rend = GetComponent<Renderer>();
-        texture = new Texture2D(textureSize, textureSize);
-        texture.Apply();
-        rend.material.mainTexture = texture;
+
+        // Mat instancié pour ne pas modifier le material partagé
+        var mat = rend.material;
+
+        // 1) Choisir la texture de départ : sourceTexture > material actuel > null
+        Texture baseTex = sourceTexture != null ? sourceTexture : mat.GetTexture(texturePropertyName);
+
+        // 2) Déterminer la taille finale
+        int w = textureSize;
+        int h = textureSize;
+
+        if (keepSourceSize && baseTex != null)
+        {
+            if (baseTex is Texture2D t2d)
+            {
+                w = Mathf.Max(1, t2d.width);
+                h = Mathf.Max(1, t2d.height);
+            }
+            else
+            {
+                // Si ce n'est pas un Texture2D (ex: RenderTexture), on garde textureSize ou on lit depuis RT
+                if (baseTex is RenderTexture rt)
+                {
+                    w = Mathf.Max(1, rt.width);
+                    h = Mathf.Max(1, rt.height);
+                }
+            }
+        }
+
+        // 3) Créer une copie writable sur laquelle on pourra dessiner
+        if (baseTex != null)
+        {
+            texture = CreateWritableCopy(baseTex, w, h);
+        }
+        else
+        {
+            texture = new Texture2D(w, h, TextureFormat.RGBA32, false, false);
+            ClearTexture(texture, Color.clear);
+            texture.Apply();
+        }
+
+        // 4) Assigner la texture copiée au material
+        mat.SetTexture(texturePropertyName, texture);
     }
 
     void Update()
@@ -45,10 +94,9 @@ public class DrawOnPlane : MonoBehaviour
             }
             else
             {
-                // Lorsque le doigt est levé, lancer l'analyse de la forme
                 if (drawPaths.ContainsKey(touchId))
                 {
-                    shapeRecognizer.AnalyzeShape(drawPaths[touchId]);
+                    shapeRecognizer?.AnalyzeShape(drawPaths[touchId]);
                     drawPaths.Remove(touchId);
                 }
                 lastDrawPositions.Remove(touchId);
@@ -66,10 +114,9 @@ public class DrawOnPlane : MonoBehaviour
         }
         else
         {
-            // Lorsque le bouton souris est relâché, lancer l'analyse de la forme
             if (drawPaths.ContainsKey(mouseId))
             {
-                shapeRecognizer.AnalyzeShape(drawPaths[mouseId]);
+                shapeRecognizer?.AnalyzeShape(drawPaths[mouseId]);
                 drawPaths.Remove(mouseId);
             }
             lastDrawPositions.Remove(mouseId);
@@ -101,11 +148,13 @@ public class DrawOnPlane : MonoBehaviour
 
     void DrawCircle(int x, int y)
     {
-        for (int i = -(int)brushSize; i <= brushSize; i++)
+        int r = Mathf.CeilToInt(brushSize);
+        int r2 = r * r;
+        for (int i = -r; i <= r; i++)
         {
-            for (int j = -(int)brushSize; j <= brushSize; j++)
+            for (int j = -r; j <= r; j++)
             {
-                if (i * i + j * j <= brushSize * brushSize)
+                if (i * i + j * j <= r2)
                 {
                     int px = x + i;
                     int py = y + j;
@@ -137,5 +186,31 @@ public class DrawOnPlane : MonoBehaviour
             if (e2 > -dy) { err -= dy; x0 += sx; }
             if (e2 < dx) { err += dx; y0 += sy; }
         }
+    }
+
+    // --- Utilitaires ---
+
+    Texture2D CreateWritableCopy(Texture src, int width, int height)
+    {
+        // Crée un RenderTexture temporaire, blit la source, puis lit les pixels dans une Texture2D readable
+        RenderTexture prev = RenderTexture.active;
+        RenderTexture rt = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32);
+        Graphics.Blit(src, rt);
+        RenderTexture.active = rt;
+
+        Texture2D tex = new Texture2D(width, height, TextureFormat.RGBA32, false, false);
+        tex.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+        tex.Apply();
+
+        RenderTexture.active = prev;
+        RenderTexture.ReleaseTemporary(rt);
+        return tex;
+    }
+
+    void ClearTexture(Texture2D tex, Color color)
+    {
+        var cols = new Color[tex.width * tex.height];
+        for (int i = 0; i < cols.Length; i++) cols[i] = color;
+        tex.SetPixels(cols);
     }
 }
