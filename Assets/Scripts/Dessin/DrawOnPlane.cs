@@ -11,75 +11,69 @@ public class DrawOnPlane : MonoBehaviour
     public float brushSize = 2f;
 
     [Header("Texture Source")]
-    [Tooltip("Si défini, sera utilisée comme base (clonée en texture dessinable). Sinon on prend la texture actuelle du material.")]
-    public Texture sourceTexture;
-    [Tooltip("Garder la taille de la texture source si disponible.")]
+    public Texture sourceTexture;                  // texture de base à cloner (facultatif)
     public bool keepSourceSize = true;
-    [Tooltip("Nom de la propriété texture du shader (_MainTex pour Built-in, _BaseMap pour URP).")]
     public string texturePropertyName = "_MainTex";
 
+    [Header("Auto Clear")]
+    public float clearDelay = 3f;
+
     private Renderer rend;
-    private Texture2D texture; // <-- manquait dans le script d'origine
+    private Texture2D texture;
+    private Color[] basePixels;                    // <<< snapshot de la texture d'origine
 
     private Dictionary<int, Vector2?> lastDrawPositions = new Dictionary<int, Vector2?>();
     public Dictionary<int, List<Vector2>> drawPaths = new Dictionary<int, List<Vector2>>();
 
     public ShapeRecognizer shapeRecognizer;
 
+    private float lastDrawTime = -999f;
+
     void Start()
     {
         rend = GetComponent<Renderer>();
-
-        // Mat instancié pour ne pas modifier le material partagé
         var mat = rend.material;
 
-        // 1) Choisir la texture de départ : sourceTexture > material actuel > null
+        // 1) base
         Texture baseTex = sourceTexture != null ? sourceTexture : mat.GetTexture(texturePropertyName);
 
-        // 2) Déterminer la taille finale
-        int w = textureSize;
-        int h = textureSize;
-
+        // 2) size
+        int w = textureSize, h = textureSize;
         if (keepSourceSize && baseTex != null)
         {
-            if (baseTex is Texture2D t2d)
-            {
-                w = Mathf.Max(1, t2d.width);
-                h = Mathf.Max(1, t2d.height);
-            }
-            else
-            {
-                // Si ce n'est pas un Texture2D (ex: RenderTexture), on garde textureSize ou on lit depuis RT
-                if (baseTex is RenderTexture rt)
-                {
-                    w = Mathf.Max(1, rt.width);
-                    h = Mathf.Max(1, rt.height);
-                }
-            }
+            if (baseTex is Texture2D t2d) { w = Mathf.Max(1, t2d.width); h = Mathf.Max(1, t2d.height); }
+            else if (baseTex is RenderTexture rt) { w = Mathf.Max(1, rt.width); h = Mathf.Max(1, rt.height); }
         }
 
-        // 3) Créer une copie writable sur laquelle on pourra dessiner
+        // 3) writable copy
         if (baseTex != null)
-        {
             texture = CreateWritableCopy(baseTex, w, h);
-        }
         else
         {
             texture = new Texture2D(w, h, TextureFormat.RGBA32, false, false);
-            ClearTexture(texture, Color.clear);
+            FillTexture(texture, Color.white);     // si pas de base, fond blanc pour éviter la transparence
             texture.Apply();
         }
 
-        // 4) Assigner la texture copiée au material
+        // 4) assign & snapshot
         mat.SetTexture(texturePropertyName, texture);
+        basePixels = texture.GetPixels();          // <<< on mémorise l'état initial (le visuel du board)
     }
 
     void Update()
     {
         HandleTouchInput();
         HandleMouseInput();
+
+        // auto reset au bout de clearDelay
+        if (Time.time - lastDrawTime > clearDelay && lastDrawTime > 0)
+        {
+            RestoreBaseTexture();                  // <<< rétablit la texture d'origine (pas transparente)
+            lastDrawTime = -999f;
+        }
     }
 
+    // --- Inputs ---
     void HandleTouchInput()
     {
         if (Touchscreen.current == null) return;
@@ -89,8 +83,9 @@ public class DrawOnPlane : MonoBehaviour
             int touchId = touch.touchId.ReadValue();
             if (touch.press.isPressed)
             {
-                Vector2 touchPos = touch.position.ReadValue();
-                ProcessDrawing(touchId, touchPos);
+                Vector2 pos = touch.position.ReadValue();
+                ProcessDrawing(touchId, pos);
+                lastDrawTime = Time.time;
             }
             else
             {
@@ -109,8 +104,9 @@ public class DrawOnPlane : MonoBehaviour
         int mouseId = -1;
         if (Mouse.current != null && Mouse.current.leftButton.isPressed)
         {
-            Vector2 mousePos = Mouse.current.position.ReadValue();
-            ProcessDrawing(mouseId, mousePos);
+            Vector2 pos = Mouse.current.position.ReadValue();
+            ProcessDrawing(mouseId, pos);
+            lastDrawTime = Time.time;
         }
         else
         {
@@ -123,6 +119,7 @@ public class DrawOnPlane : MonoBehaviour
         }
     }
 
+    // --- Drawing ---
     void ProcessDrawing(int id, Vector2 screenPos)
     {
         Ray ray = Camera.main.ScreenPointToRay(screenPos);
@@ -136,10 +133,10 @@ public class DrawOnPlane : MonoBehaviour
             if (!drawPaths.ContainsKey(id)) drawPaths[id] = new List<Vector2>();
             drawPaths[id].Add(currentPos);
 
-            Vector2? lastPos = null;
-            lastDrawPositions.TryGetValue(id, out lastPos);
-            if (lastPos.HasValue) DrawLine(lastPos.Value, currentPos);
-            else DrawCircle(x, y);
+            if (lastDrawPositions.TryGetValue(id, out var lastPos) && lastPos.HasValue)
+                DrawLine(lastPos.Value, currentPos);
+            else
+                DrawCircle(x, y);
 
             lastDrawPositions[id] = currentPos;
             texture.Apply();
@@ -151,31 +148,21 @@ public class DrawOnPlane : MonoBehaviour
         int r = Mathf.CeilToInt(brushSize);
         int r2 = r * r;
         for (int i = -r; i <= r; i++)
-        {
             for (int j = -r; j <= r; j++)
-            {
                 if (i * i + j * j <= r2)
                 {
-                    int px = x + i;
-                    int py = y + j;
+                    int px = x + i, py = y + j;
                     if (px >= 0 && px < texture.width && py >= 0 && py < texture.height)
                         texture.SetPixel(px, py, drawColor);
                 }
-            }
-        }
     }
 
     void DrawLine(Vector2 from, Vector2 to)
     {
-        int x0 = Mathf.RoundToInt(from.x);
-        int y0 = Mathf.RoundToInt(from.y);
-        int x1 = Mathf.RoundToInt(to.x);
-        int y1 = Mathf.RoundToInt(to.y);
-
-        int dx = Mathf.Abs(x1 - x0);
-        int dy = Mathf.Abs(y1 - y0);
-        int sx = x0 < x1 ? 1 : -1;
-        int sy = y0 < y1 ? 1 : -1;
+        int x0 = Mathf.RoundToInt(from.x), y0 = Mathf.RoundToInt(from.y);
+        int x1 = Mathf.RoundToInt(to.x), y1 = Mathf.RoundToInt(to.y);
+        int dx = Mathf.Abs(x1 - x0), dy = Mathf.Abs(y1 - y0);
+        int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
         int err = dx - dy;
 
         while (true)
@@ -188,11 +175,19 @@ public class DrawOnPlane : MonoBehaviour
         }
     }
 
-    // --- Utilitaires ---
+    // --- Reset helpers ---
+    void RestoreBaseTexture()
+    {
+        if (basePixels == null || basePixels.Length == 0) return;
+        texture.SetPixels(basePixels);
+        texture.Apply();
+    }
 
+    public void ResetBoardNow() => RestoreBaseTexture(); // call depuis UI/événement si besoin
+
+    // --- Utils ---
     Texture2D CreateWritableCopy(Texture src, int width, int height)
     {
-        // Crée un RenderTexture temporaire, blit la source, puis lit les pixels dans une Texture2D readable
         RenderTexture prev = RenderTexture.active;
         RenderTexture rt = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32);
         Graphics.Blit(src, rt);
@@ -207,10 +202,10 @@ public class DrawOnPlane : MonoBehaviour
         return tex;
     }
 
-    void ClearTexture(Texture2D tex, Color color)
+    void FillTexture(Texture2D tex, Color c)
     {
         var cols = new Color[tex.width * tex.height];
-        for (int i = 0; i < cols.Length; i++) cols[i] = color;
+        for (int i = 0; i < cols.Length; i++) cols[i] = c;
         tex.SetPixels(cols);
     }
 }
