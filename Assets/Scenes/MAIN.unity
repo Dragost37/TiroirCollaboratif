@@ -1359,6 +1359,7 @@ GameObject:
   - component: {fileID: 1568973092}
   - component: {fileID: 1568973091}
   - component: {fileID: 1568973090}
+  - component: {fileID: 1568973094}
   m_Layer: 0
   m_Name: Background
   m_TagString: Untagged
@@ -1444,21 +1445,33 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1568973089}
   m_Mesh: {fileID: 10209, guid: 0000000000000000e000000000000000, type: 0}
---- !u!4 &1568973093
-Transform:
+--- !u!224 &1568973093
+RectTransform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1568973089}
-  serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.14748, y: -30.6, z: 0.08758}
-  m_LocalScale: {x: 7.829988, y: 1, z: 2.28585}
+  m_LocalPosition: {x: 0, y: 0, z: 0.08758}
+  m_LocalScale: {x: 4.5514154, y: 1, z: 3.411971}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: -0.14748, y: -30.6}
+  m_SizeDelta: {x: 100, y: 100}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!222 &1568973094
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1568973089}
+  m_CullTransparentMesh: 1
 --- !u!1001 &1723355046
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1768,7 +1781,7 @@ PrefabInstance:
       objectReference: {fileID: 121562905}
     - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: requiredFingers
-      value: 2
+      value: 4
       objectReference: {fileID: 0}
     - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: separationMargin
@@ -1914,7 +1927,7 @@ MonoBehaviour:
   autoAssignIfNull: 1
   autoAssignOnSelect: 1
   useRootAsTarget: 0
-  MinFingerCount: 3
+  MinFingerCount: 2
   Sensitivity: 3
   TangentAlignmentThreshold: 0.7
   RotateX: 1
@@ -1931,8 +1944,8 @@ SceneRoots:
   m_Roots:
   - {fileID: 488728004}
   - {fileID: 1357064559}
-  - {fileID: 1568973093}
   - {fileID: 1076862493}
   - {fileID: 916324808}
   - {fileID: 1874146708}
   - {fileID: 953648597}
+  - {fileID: 1568973093}
