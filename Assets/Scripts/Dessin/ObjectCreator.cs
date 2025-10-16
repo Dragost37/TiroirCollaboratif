@@ -4,7 +4,7 @@ public class ObjectCreator : MonoBehaviour
 {
     public Transform planeTransform; // le plane sur lequel on dessine
     public int textureWidth = 1024;  // largeur de la texture pour conversion
-    public GameObject nailPrefab; // Prefab désactivé à dupliquer
+    public GameObject woodPrefab; // Prefab désactivé à dupliquer
     public GameObject screwPrefab; // Prefab désactivé à dupliquer
     public GameObject gameObjectScripts;
 
@@ -50,25 +50,6 @@ public class ObjectCreator : MonoBehaviour
         CopyAllScripts(gameObjectScripts, rectangle);
     }
 
-    public void CreateNailObject()
-    {
-        if (nailPrefab == null)
-        {
-            Debug.LogWarning("Le prefab 'nail' n'est pas assigné dans l'inspecteur !");
-            return;
-        }
-
-        GameObject newNail = Instantiate(nailPrefab, Vector3.zero, Quaternion.identity);
-
-        newNail.SetActive(true);
-
-        newNail.transform.position = new Vector3(0, 0.5f, 0);
-        newNail.transform.rotation = Quaternion.Euler(90, 0, 0);
-
-        // Ajouter les scripts communs si nécessaire
-        CopyAllScripts(gameObjectScripts, newNail);
-    }
-
     public void CreateScrewObject()
     {
         if (screwPrefab == null)
@@ -86,6 +67,25 @@ public class ObjectCreator : MonoBehaviour
 
         // Ajouter les scripts communs si nécessaire
         CopyAllScripts(gameObjectScripts, newScrew);
+    }
+    
+    public void CreateWoodObject()
+    {
+        if (woodPrefab == null)
+        {
+            Debug.LogWarning("Le prefab 'wood' n'est pas assigné dans l'inspecteur !");
+            return;
+        }
+
+        GameObject newWood = Instantiate(woodPrefab, Vector3.zero, Quaternion.identity);
+
+        newWood.SetActive(true);
+
+        newWood.transform.position = new Vector3(0, 0.5f, 0);
+        newWood.transform.rotation = Quaternion.Euler(90, 0, 0);
+
+        // Ajouter les scripts communs si nécessaire
+        CopyAllScripts(gameObjectScripts, newWood);
     }
 
     private void CopyAllScripts(GameObject source, GameObject target)
