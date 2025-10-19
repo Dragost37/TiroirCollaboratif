@@ -7,6 +7,7 @@ public class ObjectCreator : MonoBehaviour
     public GameObject woodPrefab; // Prefab désactivé à dupliquer
     public GameObject screwPrefab; // Prefab désactivé à dupliquer
     public GameObject gameObjectScripts;
+    public Material material;
 
     public void CreateSquareObject(Vector2 center, float size)
     {
@@ -23,7 +24,7 @@ public class ObjectCreator : MonoBehaviour
         GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
         cube.transform.position = worldPos + Vector3.up * 0.5f;
         cube.transform.localScale = new Vector3(size * 0.01f, 0.1f, size * 0.01f);
-        cube.GetComponent<Renderer>().material.color = Color.red;
+        cube.GetComponent<Renderer>().material = material;
 
         // Ajouter les scripts communs si nécessaire
         CopyAllScripts(gameObjectScripts, cube);
@@ -44,7 +45,7 @@ public class ObjectCreator : MonoBehaviour
         GameObject rectangle = GameObject.CreatePrimitive(PrimitiveType.Cube);
         rectangle.transform.position = worldPos + Vector3.up * 0.5f;
         rectangle.transform.localScale = new Vector3(width * 0.01f, 0.1f, height * 0.01f);
-        rectangle.GetComponent<Renderer>().material.color = Color.blue;
+        rectangle.GetComponent<Renderer>().material = material;
 
         // Ajouter les scripts communs si nécessaire
         CopyAllScripts(gameObjectScripts, rectangle);

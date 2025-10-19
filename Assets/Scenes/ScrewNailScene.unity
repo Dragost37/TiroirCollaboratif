@@ -514,6 +514,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 488728004}
     m_Modifications:
+    - target: {fileID: 618926553677912263, guid: b901ae9fc2fc6439f9c434a9488c8f25, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 71625a1a1594348a78cdaf7ec6a96480, type: 2}
     - target: {fileID: 1054046939391920283, guid: b901ae9fc2fc6439f9c434a9488c8f25, type: 3}
       propertyPath: m_LocalScale.x
       value: 5
@@ -634,6 +638,10 @@ PrefabInstance:
       propertyPath: m_Center.z
       value: -0.00009413362
       objectReference: {fileID: 0}
+    - target: {fileID: 4104383251730535178, guid: b901ae9fc2fc6439f9c434a9488c8f25, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 71625a1a1594348a78cdaf7ec6a96480, type: 2}
     - target: {fileID: 5177111521025992170, guid: b901ae9fc2fc6439f9c434a9488c8f25, type: 3}
       propertyPath: m_Name
       value: screw
@@ -1195,6 +1203,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: GameObjectObjectCreator
       objectReference: {fileID: 0}
+    - target: {fileID: 3108435306140609420, guid: 3b2f720dd65764631930345c358d6050, type: 3}
+      propertyPath: material
+      value: 
+      objectReference: {fileID: 2100000, guid: 7156e268e37805d418febe9a51a751f0, type: 2}
     - target: {fileID: 3108435306140609420, guid: 3b2f720dd65764631930345c358d6050, type: 3}
       propertyPath: nailPrefab
       value: 
@@ -1958,6 +1970,10 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 8874594695694371338, guid: f0bac1c665ab2401dacad035d9350c6c, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 5fdcc6dfd32238e4ebf0b6a35a712194, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
