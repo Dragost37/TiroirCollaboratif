@@ -382,6 +382,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MultiFingerCircleRotate
   Target: {fileID: 253788791}
+  autoAssignIfNull: 1
+  autoAssignOnSelect: 1
+  useRootAsTarget: 0
   MinFingerCount: 2
   Sensitivity: 1
   TangentAlignmentThreshold: 0.7
@@ -391,6 +394,7 @@ MonoBehaviour:
   UseWorldSpace: 1
   MinRadiusPixels: 10
   SimulateWithMouse: 1
+  drawingToolsToDisable: []
 --- !u!114 &253788793
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -568,9 +572,9 @@ GameObject:
   - component: {fileID: 1822890425}
   - component: {fileID: 1822890424}
   - component: {fileID: 1822890423}
+  - component: {fileID: 1822890426}
   - component: {fileID: 1822890422}
   - component: {fileID: 1822890421}
-  - component: {fileID: 1822890420}
   m_Layer: 0
   m_Name: Cube (1)
   m_TagString: Untagged
@@ -578,45 +582,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1822890420
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1822890419}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d430e794b175e3a5c82902e71888b97f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: '::'
-  inactivityTimeout: 5
-  resetDuration: 1.5
-  smoothReset: 1
-  resetCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
 --- !u!114 &1822890421
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -630,6 +595,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MultiFingerCircleRotate
   Target: {fileID: 1822890425}
+  autoAssignIfNull: 1
+  autoAssignOnSelect: 1
+  useRootAsTarget: 0
   MinFingerCount: 2
   Sensitivity: 1
   TangentAlignmentThreshold: 0.7
@@ -639,6 +607,7 @@ MonoBehaviour:
   UseWorldSpace: 1
   MinRadiusPixels: 10
   SimulateWithMouse: 1
+  drawingToolsToDisable: []
 --- !u!65 &1822890422
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -731,6 +700,33 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1822890426
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1822890419}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56dcbf78f86fffb489748ca65ccc5836, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::rescale
+  minScale: 0.1
+  maxScale: 10
+  scaleSmoothness: 10
+  twoFingerThreshold: 1
+  threeFingerThreshold: 2
+  fourFingerThreshold: 4
+  fiveFingerThreshold: 7
+  pinchThreshold: 0.03
+  scaleSpeed: 2
+  thumbTip: {fileID: 0}
+  indexTip: {fileID: 0}
+  middleTip: {fileID: 0}
+  ringTip: {fileID: 0}
+  pinkyTip: {fileID: 0}
+  showDebugInfo: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
