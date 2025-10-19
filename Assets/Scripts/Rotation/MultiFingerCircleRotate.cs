@@ -13,77 +13,119 @@ public class MultiFingerCircleRotate : MonoBehaviour
     public bool useRootAsTarget = false;
 
     [Header("Gesture settings")]
-    public int MinFingerCount = 2;
+    [Tooltip("Exige exactement 2 doigts pour interagir.")]
+    public bool RequireExactlyTwoFingers = true;
     public float Sensitivity = 1.0f;
-    [Range(0f, 1f)] public float TangentAlignmentThreshold = 0.7f;
-    public bool RotateX = true;
-    public bool RotateY = true;
-    public bool RotateZ = true;
     public bool UseWorldSpace = true;
+
+    [Header("Axes activés")]
+    public bool RotateX = true;  // pitch via translation du pilote (verticale)
+    public bool RotateY = true;  // yaw via TWIST (angle pilote autour du pivot)
+    public bool RotateZ = true;  // roll via translation du pilote (horizontale)
+
+    [Header("Pivot/Pilote")]
+    [Tooltip("Nb de frames à observer avant de figer le pivot (si UseFirstFingerAsPivot=false).")]
+    public int PivotDetectFrames = 3;
+    [Tooltip("Jitter max (px) toléré pour considérer un doigt immobile.")]
+    public float PivotJitterPx = 3f;
+    [Tooltip("Si activé : le 1er doigt posé devient pivot, le 2e devient pilote (recommandé).")]
+    public bool UseFirstFingerAsPivot = true;
+
+    [Header("Verrouillage X/Z")]
+    [Tooltip("Seuil (px) pour décider l’axe X/Z (dominance du delta du pilote).")]
+    public float AxisLockThresholdPx = 2f;
+    [Range(0f,1f)] public float AxisUnlockHysteresis = 0.35f; // un peu plus dur (propre)
+
+    [Header("Yaw (twist autour du pivot)")]
+    [Tooltip("Variation d’angle minimale (degrés) avant de déclencher le yaw.")]
+    public float TwistThresholdDeg = 2.0f;
+    [Tooltip("Gain yaw par degré de twist.")]
+    public float TwistYawGain = 0.75f;
+
+    [Header("Confort & stabilité")]
+    [Tooltip("Lissage (0=brut, 1=très lissé)")]
+    [Range(0f,1f)] public float SmoothFactor = 0.35f;
+    [Tooltip("Zone morte en pixels avant de bouger")]
+    public float DeadZonePx = 3f;
+    [Tooltip("Vitesse max par frame (deg) pour éviter les à-coups)")]
+    public float MaxDegPerFrame = 8f;
+
+    [Header("Gain adaptatif")]
+    public bool AdaptiveGain = true;
+    public float GainPerMeter = 0.15f; // +15%/m
+
+    [Header("Contraintes d'angles")]
+    public bool ClampPitch = true;
+    public float PitchMinDeg = -80f;
+    public float PitchMaxDeg =  80f;
 
     [Header("Gesture detection extras")]
     public float MinRadiusPixels = 10f;
-    public bool SimulateWithMouse = true;
+    public bool SimulateWithMouse = true; // (pivot/pilote Y difficile à simuler à la souris)
 
     [Header("Dessin à désactiver pendant la rotation")]
-    [Tooltip("Drag ici les scripts de dessin (Painter, LineDrawer, etc.) à couper pendant la rotation.")]
     public Behaviour[] drawingToolsToDisable;
 
-    // --- Ownership global des doigts (un doigt -> un rotateur) ---
-    private static readonly Dictionary<int, MultiFingerCircleRotate> s_FingerOwners = new();
+    [Header("Debug UI")]
+    public bool ShowOverlay = false;
 
+    // ----- Ownership global -----
+    private static readonly Dictionary<int, MultiFingerCircleRotate> s_FingerOwners = new();
     private static bool TryClaimFinger(int fingerId, MultiFingerCircleRotate owner)
     {
         if (s_FingerOwners.TryGetValue(fingerId, out var current))
-            return current == owner; // déjà à moi -> ok
+            return current == owner;
         s_FingerOwners[fingerId] = owner;
         return true;
     }
-
     private static void ReleaseFinger(int fingerId, MultiFingerCircleRotate owner)
     {
         if (s_FingerOwners.TryGetValue(fingerId, out var current) && current == owner)
             s_FingerOwners.Remove(fingerId);
     }
-
     private static void ReleaseAllFor(MultiFingerCircleRotate owner)
     {
-        // libère tous les doigts détenus par cet objet
         var toFree = new List<int>();
-        foreach (var kv in s_FingerOwners)
-            if (kv.Value == owner) toFree.Add(kv.Key);
+        foreach (var kv in s_FingerOwners) if (kv.Value == owner) toFree.Add(kv.Key);
         foreach (var id in toFree) s_FingerOwners.Remove(id);
     }
 
-    // --- Etat instance ---
+    // ----- Etat instance -----
     private readonly Dictionary<int, Vector2> ownedPrevPositions = new();
-    private Vector2 prevCenter = Vector2.zero;
     private Camera mainCamera;
     private resetToOriPos resetScript;
 
-    // Mouse simulation
-    private Vector2 lastMousePos;
-    private bool mouseActive = false;
-    private Vector2 mouseScreenCenter;
-
-    // À bloquer pendant la rotation (local au sous-arbre)
+    // Sous-arbre à bloquer
     private PartDuplicator[] _duplicators;
     private DraggablePart[]  _draggables;
-    private bool _dupDisabled  = false;
-    private bool _dragDisabled = false;
-    private bool _drawDisabled = false;
+    private bool _dupDisabled, _dragDisabled, _drawDisabled;
+
+    // Pivot / pilote
+    private int _pivotId = -1, _pilotId = -1;
+    private int _pivotDetectCounter = 0;
+    private float _accDeltaA = 0f, _accDeltaB = 0f;
+
+    // Verrou X/Z pendant le geste
+    private enum AxisXZ { None, X, Z }
+    private AxisXZ _axisLockXZ = AxisXZ.None;
+
+    // Centre et cache
+    private Vector2 _prevCenter = Vector2.zero;
+
+    // Confort: EMA + deadzone
+    private Vector2 _pilotDeltaSmoothed = Vector2.zero;
+    private float   _twistSmoothedDeg   = 0f;
+
+    // Clamp pitch accumulation (World space simple)
+    private float _pitchAccum = 0f;
 
     void Reset() { Target = transform; }
 
     void Start()
     {
         mainCamera = Camera.main;
-
-        if (autoAssignIfNull && !Target)
-            AssignTarget(useRootAsTarget ? transform.root : transform);
-        else
-            TryRefreshResetScript();
-
+        if (autoAssignIfNull && !Target) AssignTarget(useRootAsTarget ? transform.root : transform);
+        else TryRefreshResetScript();
         _duplicators = GetComponentsInChildren<PartDuplicator>(true);
         _draggables  = GetComponentsInChildren<DraggablePart>(true);
     }
@@ -93,10 +135,9 @@ public class MultiFingerCircleRotate : MonoBehaviour
         EnableDuplication(true);
         EnableDrag(true);
         EnableDrawing(true);
-
-        // libère tous les doigts éventuellement détenus
         ReleaseAllFor(this);
         ownedPrevPositions.Clear();
+        ResetGestureState();
     }
 
     void Update()
@@ -104,96 +145,176 @@ public class MultiFingerCircleRotate : MonoBehaviour
 #if UNITY_EDITOR
         if (SimulateWithMouse)
         {
-            HandleMouseSimulation();
+            HandleMouseSimulation(); // NB: la souris ne simule pas fidèlement pivot/pilote
             return;
         }
 #endif
         ProcessTouchOwnership();
 
-        var ownedTouches = GetOwnedActiveTouches();
+        var touches = GetOwnedActiveTouches();
 
-        if (ownedTouches.Count < MinFingerCount)
+        if (RequireExactlyTwoFingers)
         {
-            EnableDuplication(true);
-            EnableDrag(true);
-            EnableDrawing(true);
-            prevCenter = ComputeCenter(ownedTouches);
+            if (touches.Count != 2) { EndGestureIdle(touches); return; }
+        }
+        else
+        {
+            if (touches.Count < 2) { EndGestureIdle(touches); return; }
+        }
+
+        Vector2 center = ComputeCenter(touches);
+        if (!CenterHasEnoughRadius(touches, center))
+        {
+            EndGestureIdleWithCenter(center);
             return;
         }
 
-        Vector2 center = ComputeCenter(ownedTouches);
-        if (!CenterHasEnoughRadius(ownedTouches, center))
-        {
-            EnableDuplication(true);
-            EnableDrag(true);
-            EnableDrawing(true);
-            prevCenter = center;
-            return;
-        }
-
-        // rotation valide en cours -> bloque dup/drag/dessin pour CE sous-arbre uniquement
+        // Geste valide -> bloquer sous-fonctionnalités
         EnableDuplication(false);
         EnableDrag(false);
         EnableDrawing(false);
 
+        // ----- Déterminer pivot / pilote -----
+        Touch tA = touches[0];
+        Touch tB = touches[1];
+
+        // Init prev pos si besoin
+        if (!ownedPrevPositions.ContainsKey(tA.fingerId)) ownedPrevPositions[tA.fingerId] = tA.position;
+        if (!ownedPrevPositions.ContainsKey(tB.fingerId)) ownedPrevPositions[tB.fingerId] = tB.position;
+
+        Vector2 prevA = ownedPrevPositions[tA.fingerId];
+        Vector2 prevB = ownedPrevPositions[tB.fingerId];
+        Vector2 dA = tA.position - prevA;
+        Vector2 dB = tB.position - prevB;
+
+        if (_pivotId < 0 || _pilotId < 0)
+        {
+            if (UseFirstFingerAsPivot)
+            {
+                // 1er doigt = pivot, 2e = pilote
+                _pivotId = tA.fingerId;
+                _pilotId = tB.fingerId;
+            }
+            else
+            {
+                // phase d’observation courte (moins mobile = pivot)
+                _accDeltaA += dA.magnitude;
+                _accDeltaB += dB.magnitude;
+                _pivotDetectCounter++;
+
+                if (_pivotDetectCounter >= PivotDetectFrames)
+                {
+                    bool aIsPivot = _accDeltaA <= _accDeltaB && _accDeltaA <= PivotJitterPx * _pivotDetectCounter;
+                    bool bIsPivot = _accDeltaB <  _accDeltaA && _accDeltaB <= PivotJitterPx * _pivotDetectCounter;
+
+                    if (aIsPivot || bIsPivot)
+                    {
+                        _pivotId = aIsPivot ? tA.fingerId : tB.fingerId;
+                        _pilotId = aIsPivot ? tB.fingerId : tA.fingerId;
+                    }
+                    else
+                    {
+                        // à défaut, choisir le moins mobile
+                        if (_accDeltaA <= _accDeltaB) { _pivotId = tA.fingerId; _pilotId = tB.fingerId; }
+                        else                           { _pivotId = tB.fingerId; _pilotId = tA.fingerId; }
+                    }
+                }
+            }
+        }
+
+        // Si pivot/pilote définis, récupérer leurs deltas
+        Vector2 pivotPrev = prevA, pilotPrev = prevB, pivotNow = tA.position, pilotNow = tB.position;
+        if (_pivotId == tB.fingerId) { pivotPrev = prevB; pivotNow = tB.position; pilotPrev = prevA; pilotNow = tA.position; }
+
         Vector3 totalRotation = Vector3.zero;
 
-        foreach (var t in ownedTouches)
+        // ----- 1) Yaw via twist du pilote autour du pivot (avec lissage/zone morte/cap) -----
+        if (RotateY)
         {
-            int id = t.fingerId;
+            Vector2 prevVec = pilotPrev - pivotPrev;
+            Vector2 currVec = pilotNow  - pivotNow;
 
-            if (!ownedPrevPositions.ContainsKey(id))
+            if (prevVec.sqrMagnitude > 1e-3f && currVec.sqrMagnitude > 1e-3f)
             {
-                ownedPrevPositions[id] = t.position;
-                continue;
-            }
+                float aPrev = Mathf.Atan2(prevVec.y, prevVec.x) * Mathf.Rad2Deg;
+                float aCurr = Mathf.Atan2(currVec.y, currVec.x) * Mathf.Rad2Deg;
+                float dAdeg = Mathf.DeltaAngle(aPrev, aCurr);
 
-            Vector2 prevPos = ownedPrevPositions[id];
-            Vector2 currPos = t.position;
-            Vector2 deltaMove = currPos - prevPos;
+                // EMA + deadzone + cap
+                _twistSmoothedDeg = Ema(_twistSmoothedDeg, dAdeg, SmoothFactor);
+                float twistOut = (Mathf.Abs(_twistSmoothedDeg) >= TwistThresholdDeg) ? _twistSmoothedDeg : 0f;
 
-            if (deltaMove.sqrMagnitude < 0.01f)
-            {
-                ownedPrevPositions[id] = currPos;
-                continue;
-            }
-
-            if (RotateX) totalRotation.x -= deltaMove.y * Sensitivity * 0.1f;
-            if (RotateY) totalRotation.y += deltaMove.x * Sensitivity * 0.1f;
-
-            if (RotateZ)
-            {
-                Vector2 prevVec = prevPos - prevCenter;
-                Vector2 currVec = currPos - center;
-
-                if (prevVec.sqrMagnitude > 0.0001f && currVec.sqrMagnitude > 0.0001f)
+                if (twistOut != 0f)
                 {
-                    float anglePrev = Mathf.Atan2(prevVec.y, prevVec.x);
-                    float angleCurr = Mathf.Atan2(currVec.y, currVec.x);
-                    float delta = Mathf.DeltaAngle(anglePrev * Mathf.Rad2Deg, angleCurr * Mathf.Rad2Deg);
+                    float g = GetAdaptiveGain();
+                    float deg = twistOut * TwistYawGain * Sensitivity * g;
+                    totalRotation.y += Mathf.Clamp(deg, -MaxDegPerFrame, +MaxDegPerFrame);
+                }
+            }
+        }
 
-                    Vector2 tangent = new Vector2(-currVec.y, currVec.x).normalized;
-                    float align = Mathf.Abs(Vector2.Dot(deltaMove.normalized, tangent));
-                    if (align >= TangentAlignmentThreshold)
-                        totalRotation.z += delta * Sensitivity * 0.5f;
+        // ----- 2) Pitch/Roll via translation du pilote + VERROU X/Z (projections pures) -----
+        Vector2 rawPilotDelta = pilotNow - pilotPrev;
+        _pilotDeltaSmoothed = Ema(_pilotDeltaSmoothed, rawPilotDelta, SmoothFactor);
+
+        Vector2 pilotDelta = new Vector2(
+            Mathf.Abs(_pilotDeltaSmoothed.x) >= DeadZonePx ? _pilotDeltaSmoothed.x : 0f,
+            Mathf.Abs(_pilotDeltaSmoothed.y) >= DeadZonePx ? _pilotDeltaSmoothed.y : 0f
+        );
+
+        if (pilotDelta.sqrMagnitude > 0.001f)
+        {
+            if (_axisLockXZ == AxisXZ.None && pilotDelta.magnitude >= AxisLockThresholdPx)
+            {
+                float ax = Mathf.Abs(pilotDelta.x);
+                float ay = Mathf.Abs(pilotDelta.y);
+                _axisLockXZ = (ax > ay) ? AxisXZ.Z : AxisXZ.X;
+            }
+            else if (_axisLockXZ != AxisXZ.None)
+            {
+                float ax = Mathf.Abs(pilotDelta.x);
+                float ay = Mathf.Abs(pilotDelta.y);
+                if (_axisLockXZ == AxisXZ.X)
+                {
+                    if (ax > ay * (1f + AxisUnlockHysteresis)) _axisLockXZ = AxisXZ.Z;
+                }
+                else if (_axisLockXZ == AxisXZ.Z)
+                {
+                    if (ay > ax * (1f + AxisUnlockHysteresis)) _axisLockXZ = AxisXZ.X;
                 }
             }
 
-            ownedPrevPositions[id] = currPos;
+            float g = GetAdaptiveGain();
+
+            if (_axisLockXZ == AxisXZ.X && RotateX)
+            {
+                float deg = -pilotDelta.y * Sensitivity * 0.1f * g;
+                totalRotation.x += Mathf.Clamp(deg, -MaxDegPerFrame, +MaxDegPerFrame);
+            }
+
+            if (_axisLockXZ == AxisXZ.Z && RotateZ)
+            {
+                float deg =  pilotDelta.x * Sensitivity * 0.1f * g;
+                totalRotation.z += Mathf.Clamp(deg, -MaxDegPerFrame, +MaxDegPerFrame);
+            }
         }
 
-        prevCenter = center;
-
+        // Appliquer
         if (totalRotation != Vector3.zero)
         {
             ApplyRotation(totalRotation);
             if (resetScript != null) resetScript.ResetActivityTimer();
         }
+
+        // Mises à jour des prev
+        ownedPrevPositions[tA.fingerId] = tA.position;
+        ownedPrevPositions[tB.fingerId] = tB.position;
+        _prevCenter = center;
     }
 
+    // --------- Ownership & helpers ----------
     private void ProcessTouchOwnership()
     {
-        // Claim/release par phase
         for (int i = 0; i < Input.touchCount; i++)
         {
             Touch t = Input.touches[i];
@@ -201,17 +322,20 @@ public class MultiFingerCircleRotate : MonoBehaviour
 
             if (t.phase == TouchPhase.Began)
             {
-                if (RaycastHitThisObject(t.position))
+                bool alreadyOwning = ownedPrevPositions.Count > 0;
+                if (RaycastHitThisObject(t.position) || alreadyOwning)
                 {
-                    // tente de réserver ce doigt : si déjà pris par un autre objet, on ignore
                     if (TryClaimFinger(id, this))
                     {
-                        if (autoAssignOnSelect)
+                        if (autoAssignOnSelect && !alreadyOwning)
                         {
                             var newTarget = useRootAsTarget ? transform.root : transform;
                             if (Target != newTarget) AssignTarget(newTarget);
                         }
                         ownedPrevPositions[id] = t.position;
+
+                        // Reset d’un nouveau geste quand on passe à 1 puis 2 doigts
+                        if (ownedPrevPositions.Count <= 2) ResetGestureState();
                     }
                 }
             }
@@ -220,24 +344,8 @@ public class MultiFingerCircleRotate : MonoBehaviour
                 if (ownedPrevPositions.ContainsKey(id))
                     ownedPrevPositions.Remove(id);
                 ReleaseFinger(id, this);
-            }
-        }
 
-        // purge des touches disparues (ex: perte d’événement)
-        List<int> toRemove = null;
-        foreach (int ownedId in ownedPrevPositions.Keys)
-        {
-            bool exists = false;
-            for (int i = 0; i < Input.touchCount; i++)
-                if (Input.touches[i].fingerId == ownedId) { exists = true; break; }
-            if (!exists) (toRemove ??= new List<int>()).Add(ownedId);
-        }
-        if (toRemove != null)
-        {
-            foreach (int id in toRemove)
-            {
-                ownedPrevPositions.Remove(id);
-                ReleaseFinger(id, this);
+                if (ownedPrevPositions.Count < 2) EndGestureIdle(new List<Touch>());
             }
         }
     }
@@ -248,7 +356,6 @@ public class MultiFingerCircleRotate : MonoBehaviour
         for (int i = 0; i < Input.touchCount; i++)
         {
             var t = Input.touches[i];
-            // je ne prends que les doigts que J’AI claim
             if (s_FingerOwners.TryGetValue(t.fingerId, out var owner) && owner == this)
                 if (ownedPrevPositions.ContainsKey(t.fingerId))
                     list.Add(t);
@@ -260,7 +367,20 @@ public class MultiFingerCircleRotate : MonoBehaviour
     {
         if (!mainCamera) mainCamera = Camera.main;
         Ray ray = mainCamera.ScreenPointToRay(screenPos);
-        return Physics.Raycast(ray, out var hit) && hit.collider && hit.collider.gameObject == gameObject;
+
+        if (Physics.Raycast(ray, out var hit3D) && hit3D.collider)
+        {
+            if (hit3D.transform == transform || hit3D.transform.IsChildOf(transform))
+                return true;
+        }
+
+        var hit2D = Physics2D.GetRayIntersection(ray);
+        if (hit2D.collider)
+        {
+            if (hit2D.transform == transform || hit2D.transform.IsChildOf(transform))
+                return true;
+        }
+        return false;
     }
 
     private Vector2 ComputeCenter(List<Touch> touches)
@@ -280,9 +400,25 @@ public class MultiFingerCircleRotate : MonoBehaviour
         return avg >= MinRadiusPixels;
     }
 
+    private float GetAdaptiveGain()
+    {
+        if (!AdaptiveGain || !mainCamera || !Target) return 1f;
+        float dist = Vector3.Distance(mainCamera.transform.position, Target.position);
+        return 1f + dist * GainPerMeter;
+    }
+
     private void ApplyRotation(Vector3 rotation)
     {
         if (!Target) return;
+
+        // Clamp pitch (X) si demandé
+        if (ClampPitch && rotation.x != 0f)
+        {
+            float next = _pitchAccum + rotation.x;
+            float allowed = Mathf.Clamp(next, PitchMinDeg, PitchMaxDeg) - _pitchAccum;
+            rotation.x = allowed;
+            _pitchAccum += allowed;
+        }
 
         if (UseWorldSpace)
         {
@@ -298,20 +434,13 @@ public class MultiFingerCircleRotate : MonoBehaviour
         }
     }
 
-    // ---------- Auto-assign helpers ----------
-    public void AssignTarget(Transform t)
-    {
-        Target = t;
-        TryRefreshResetScript();
-    }
-
+    public void AssignTarget(Transform t) { Target = t; TryRefreshResetScript(); }
     private void TryRefreshResetScript()
     {
         resetScript = null;
         if (Target) resetScript = Target.GetComponent<resetToOriPos>();
     }
 
-    // ---------- Toggles (local au sous-arbre) ----------
     private void EnableDuplication(bool enable)
     {
         if (_duplicators == null || _duplicators.Length == 0)
@@ -320,7 +449,6 @@ public class MultiFingerCircleRotate : MonoBehaviour
 
         if (enable && !_dupDisabled) return;
         if (!enable && _dupDisabled) return;
-
         foreach (var d in _duplicators) if (d) d.enabled = enable;
         _dupDisabled = !enable;
     }
@@ -333,7 +461,6 @@ public class MultiFingerCircleRotate : MonoBehaviour
 
         if (enable && !_dragDisabled) return;
         if (!enable && _dragDisabled) return;
-
         foreach (var g in _draggables) if (g) g.enabled = enable;
         _dragDisabled = !enable;
     }
@@ -341,15 +468,44 @@ public class MultiFingerCircleRotate : MonoBehaviour
     private void EnableDrawing(bool enable)
     {
         if (drawingToolsToDisable == null) return;
-
         if (enable && !_drawDisabled) return;
         if (!enable && _drawDisabled) return;
-
         foreach (var b in drawingToolsToDisable) if (b) b.enabled = enable;
         _drawDisabled = !enable;
     }
 
-    #region Mouse simulation (editor)
+    private void EndGestureIdle(List<Touch> ownedTouches)
+    {
+        EnableDuplication(true);
+        EnableDrag(true);
+        EnableDrawing(true);
+        _prevCenter = ComputeCenter(ownedTouches);
+        ResetGestureState();
+    }
+    private void EndGestureIdleWithCenter(Vector2 center)
+    {
+        EnableDuplication(true);
+        EnableDrag(true);
+        EnableDrawing(true);
+        _prevCenter = center;
+        ResetGestureState();
+    }
+    private void ResetGestureState()
+    {
+        _pivotId = _pilotId = -1;
+        _pivotDetectCounter = 0;
+        _accDeltaA = _accDeltaB = 0f;
+        _axisLockXZ = AxisXZ.None;
+
+        _pilotDeltaSmoothed = Vector2.zero;
+        _twistSmoothedDeg = 0f;
+        // On peut aussi reset _pitchAccum si tu veux re-clamper par geste :
+        // _pitchAccum = 0f;
+    }
+
+    #region Mouse simulation (éditeur)
+    private Vector2 lastMousePos;
+    private bool mouseActive = false;
     private void HandleMouseSimulation()
     {
         if (!SimulateWithMouse) return;
@@ -363,19 +519,14 @@ public class MultiFingerCircleRotate : MonoBehaviour
                     var newTarget = useRootAsTarget ? transform.root : transform;
                     if (Target != newTarget) AssignTarget(newTarget);
                 }
-
                 mouseActive = true;
                 lastMousePos = Input.mousePosition;
-                mouseScreenCenter = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
-
                 EnableDuplication(false);
                 EnableDrag(false);
                 EnableDrawing(false);
+                ResetGestureState();
             }
-            else
-            {
-                mouseActive = false;
-            }
+            else mouseActive = false;
         }
         else if (Input.GetMouseButtonUp(0))
         {
@@ -383,42 +534,50 @@ public class MultiFingerCircleRotate : MonoBehaviour
             EnableDuplication(true);
             EnableDrag(true);
             EnableDrawing(true);
+            ResetGestureState();
         }
 
         if (!mouseActive) return;
 
-        Vector2 currPos = (Vector2)Input.mousePosition;
-        Vector2 deltaMove = currPos - lastMousePos;
-        Vector3 rotation = Vector3.zero;
+        // La souris ne simule pas pivot/pilote correctement.
+        // On applique juste X/Z avec verrou + confort.
+        Vector2 curr = (Vector2)Input.mousePosition;
+        Vector2 raw = curr - lastMousePos;
 
-        if (RotateX) rotation.x -= deltaMove.y * Sensitivity * 0.1f;
-        if (RotateY) rotation.y += deltaMove.x * Sensitivity * 0.1f;
+        _pilotDeltaSmoothed = Ema(_pilotDeltaSmoothed, raw, SmoothFactor);
+        Vector2 d = new Vector2(
+            Mathf.Abs(_pilotDeltaSmoothed.x) >= DeadZonePx ? _pilotDeltaSmoothed.x : 0f,
+            Mathf.Abs(_pilotDeltaSmoothed.y) >= DeadZonePx ? _pilotDeltaSmoothed.y : 0f
+        );
 
-        if (RotateZ)
-        {
-            Vector2 prevVec = lastMousePos - mouseScreenCenter;
-            Vector2 currVec = currPos      - mouseScreenCenter;
+        if (_axisLockXZ == AxisXZ.None && d.magnitude >= AxisLockThresholdPx)
+            _axisLockXZ = (Mathf.Abs(d.x) > Mathf.Abs(d.y)) ? AxisXZ.Z : AxisXZ.X;
 
-            if (prevVec.sqrMagnitude > 0.0001f && currVec.sqrMagnitude > 0.0001f)
-            {
-                float anglePrev = Mathf.Atan2(prevVec.y, prevVec.x);
-                float angleCurr = Mathf.Atan2(currVec.y, currVec.x);
-                float delta = Mathf.DeltaAngle(anglePrev * Mathf.Rad2Deg, angleCurr * Mathf.Rad2Deg);
+        Vector3 rot = Vector3.zero;
+        float g = GetAdaptiveGain();
 
-                Vector2 tangent = new Vector2(-currVec.y, currVec.x).normalized;
-                float align = Mathf.Abs(Vector2.Dot(deltaMove.normalized, tangent));
-                if (align >= TangentAlignmentThreshold)
-                    rotation.z += delta * Sensitivity * 0.5f;
-            }
-        }
+        if (_axisLockXZ == AxisXZ.X && RotateX)
+            rot.x += Mathf.Clamp(-d.y * Sensitivity * 0.1f * g, -MaxDegPerFrame, +MaxDegPerFrame);
+        if (_axisLockXZ == AxisXZ.Z && RotateZ)
+            rot.z += Mathf.Clamp( d.x * Sensitivity * 0.1f * g, -MaxDegPerFrame, +MaxDegPerFrame);
 
-        if (rotation != Vector3.zero)
-        {
-            ApplyRotation(rotation);
-            if (resetScript != null) resetScript.ResetActivityTimer();
-        }
-
-        lastMousePos = currPos;
+        if (rot != Vector3.zero) ApplyRotation(rot);
+        lastMousePos = curr;
     }
     #endregion
+
+    // -------- EMA helpers ----------
+    private static float Ema(float current, float target, float factor)
+        => Mathf.Lerp(current, target, 1f - Mathf.Pow(1f - Mathf.Clamp01(factor), 1f + Time.deltaTime * 60f));
+    private static Vector2 Ema(Vector2 current, Vector2 target, float factor)
+        => new Vector2(Ema(current.x, target.x, factor), Ema(current.y, target.y, factor));
+
+    // -------- Overlay ----------
+    void OnGUI()
+    {
+        if (!ShowOverlay) return;
+        string axis = _axisLockXZ.ToString(); // None/X/Z
+        string txt = $"Pivot:{_pivotId}  Pilot:{_pilotId}  Axis:{axis}";
+        GUI.Label(new Rect(10,10,600,24), txt);
+    }
 }

@@ -1888,8 +1888,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d430e794b175e3a5c82902e71888b97f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::resetToOriPos
-  inactivityTimeout: 3
-  resetDuration: 1.5
+  inactivityTimeout: 2
+  resetDuration: 1
   smoothReset: 1
   resetCurve:
     serializedVersion: 2
@@ -1931,17 +1931,32 @@ MonoBehaviour:
   autoAssignIfNull: 1
   autoAssignOnSelect: 1
   useRootAsTarget: 0
-  MinFingerCount: 2
+  RequireExactlyTwoFingers: 1
   Sensitivity: 3
-  TangentAlignmentThreshold: 0.7
-  RotateX: 1
-  RotateY: 0
-  RotateZ: 1
   UseWorldSpace: 1
+  RotateX: 1
+  RotateY: 1
+  RotateZ: 1
+  PivotDetectFrames: 2
+  PivotJitterPx: 2
+  UseFirstFingerAsPivot: 1
+  AxisLockThresholdPx: 2
+  AxisUnlockHysteresis: 0.2
+  TwistThresholdDeg: 1.5
+  TwistYawGain: 0.6
+  SmoothFactor: 0.35
+  DeadZonePx: 2
+  MaxDegPerFrame: 10
+  AdaptiveGain: 1
+  GainPerMeter: 0.15
+  ClampPitch: 1
+  PitchMinDeg: -80
+  PitchMaxDeg: 80
   MinRadiusPixels: 10
   SimulateWithMouse: 0
   drawingToolsToDisable:
   - {fileID: 121562905}
+  ShowOverlay: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
