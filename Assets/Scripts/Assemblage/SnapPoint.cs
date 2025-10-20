@@ -20,12 +20,12 @@ public class SnapPoint : MonoBehaviour
     {
         occupied = true;
 
-        // 🔊 Optionnel : joue un son si un AudioSource est attaché
+        // joue un son si un AudioSource est attaché
         var audio = GetComponent<AudioSource>();
         if (audio != null)
             audio.Play();
 
-        // 🔧 Optionnel : notifie un gestionnaire global d’assemblage s’il existe
+        // notifie un gestionnaire global d’assemblage s’il existe
         var asm = FindObjectOfType<AssemblyManager>();
         if (asm != null)
             asm.ValidateStep(partGO);

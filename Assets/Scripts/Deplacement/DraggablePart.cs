@@ -5,8 +5,8 @@ public class DraggablePart : MonoBehaviour
 {
     [Header("Snap")]
     public string compatibleSnapTag;
-    public float snapDistance = 0.08f;
-    public float snapAngle = 15f;
+    public float snapDistance = 2f;
+    public float snapAngle = 91f;
 
     [Header("Dessin")]
     public Behaviour drawingTool;
@@ -77,8 +77,8 @@ public class DraggablePart : MonoBehaviour
             var wp = hit.point;
             _grabOffset = transform.position - wp;
 
-            // plan de drag parallèle à l'écran, passant par la pièce
-            _dragPlane = new Plane(-_cam.transform.forward, transform.position);
+            // plan de drag parallèle à l'écran, passant par le point de contact
+            _dragPlane = new Plane(-_cam.transform.forward, hit.point);
 
             // neutraliser la physique pendant le drag
             if (_hadRb && _rb != null)
@@ -134,17 +134,21 @@ public class DraggablePart : MonoBehaviour
 #if UNITY_2023_1_OR_NEWER
         var snaps = Object.FindObjectsByType<SnapPoint>(FindObjectsSortMode.None);
 #else
-        var snaps = Object.FindObjectsOfType<SnapPoint>();
+    var snaps = Object.FindObjectsOfType<SnapPoint>();
 #endif
         SnapPoint best = null;
         float bestDist = float.MaxValue;
+        Collider col = GetComponent<Collider>();
 
         foreach (var sp in snaps)
         {
             if (!sp || sp.occupied) continue;
             if (!string.Equals(sp.snapTag, compatibleSnapTag)) continue;
 
-            float d = Vector3.Distance(transform.position, sp.transform.position);
+            // Distance mesurée entre la surface de la pièce et le SnapPoint
+            Vector3 closestPoint = col.ClosestPoint(sp.transform.position);
+            float d = Vector3.Distance(closestPoint, sp.transform.position);
+
             if (d < bestDist)
             {
                 best = sp;
@@ -152,15 +156,40 @@ public class DraggablePart : MonoBehaviour
             }
         }
 
+        Debug.Log($"[DraggablePart] Meilleur snap trouvé : {(best != null ? best.name : "aucun")} à {bestDist} m. avec un angle de {Quaternion.Angle(transform.rotation, best != null ? best.transform.rotation : Quaternion.identity)}°.");
+
         if (best != null && bestDist <= snapDistance)
         {
             float ang = Quaternion.Angle(transform.rotation, best.transform.rotation);
             if (ang <= snapAngle)
             {
-                transform.position = best.transform.position;
-                transform.rotation = best.transform.rotation;
+                // Coller la face la plus proche
+                Vector3 closestPoint = col.ClosestPoint(best.transform.position);
+                Vector3 offset = best.transform.position - closestPoint;
+                transform.position += offset;
+
+                // transform.rotation = best.transform.rotation;
+
+                // rattacher à la structure
+                transform.SetParent(best.transform.parent, true);
+                if (_hadRb && _rb != null)
+                {
+                    _rb.isKinematic = true;
+                    _rb.linearVelocity = Vector3.zero;
+                    _rb.angularVelocity = Vector3.zero;
+                    _rb.constraints = RigidbodyConstraints.FreezeAll;
+                }
+
+                foreach (var c in transform.GetComponentsInChildren<Collider>())
+                    foreach (var other in transform.parent.GetComponentsInChildren<Collider>())
+                        if (c != other)
+                            Physics.IgnoreCollision(c, other, true);
+
+                Debug.Log($"[DraggablePart] Pièce '{name}' accrochée au SnapPoint '{best.name}'.");
+
                 best.OnSnapped(gameObject);
             }
         }
     }
+
 }
