@@ -392,6 +392,12 @@ MonoBehaviour:
   RotateY: 1
   RotateZ: 0
   UseWorldSpace: 1
+  enableAxisLocking: 1
+  axisDetectionThreshold: 15
+  stationaryThreshold: 20
+  showDebugLogs: 0
+  enableSnapping: 0
+  snapAngle: 15
   MinRadiusPixels: 10
   SimulateWithMouse: 1
   drawingToolsToDisable: []
@@ -605,7 +611,13 @@ MonoBehaviour:
   RotateY: 1
   RotateZ: 1
   UseWorldSpace: 1
-  MinRadiusPixels: 10
+  enableAxisLocking: 1
+  axisDetectionThreshold: 15
+  stationaryThreshold: 20
+  showDebugLogs: 1
+  enableSnapping: 1
+  snapAngle: 20
+  MinRadiusPixels: 20
   SimulateWithMouse: 1
   drawingToolsToDisable: []
 --- !u!65 &1822890422

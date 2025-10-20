@@ -27,6 +27,14 @@ public class MultiFingerCircleRotate : MonoBehaviour
     public bool enableAxisLocking = true;
     [Tooltip("Minimum movement to detect rotation axis")]
     public float axisDetectionThreshold = 15f;
+    [Tooltip("Maximum movement for a finger to be considered stationary")]
+    public float stationaryThreshold = 20f;
+    public bool showDebugLogs = false;
+
+    [Header("Rotation Snapping")]
+    public bool enableSnapping = false;
+    [Tooltip("Snap rotation to this angle increment (in degrees)")]
+    public float snapAngle = 15f;
 
     [Header("Gesture detection extras")]
     public float MinRadiusPixels = 10f;
@@ -36,13 +44,13 @@ public class MultiFingerCircleRotate : MonoBehaviour
     [Tooltip("Drag ici les scripts de dessin (Painter, LineDrawer, etc.) à couper pendant la rotation.")]
     public Behaviour[] drawingToolsToDisable;
 
-    // --- Ownership global des doigts (un doigt -> un rotateur) ---
+
     private static readonly Dictionary<int, MultiFingerCircleRotate> s_FingerOwners = new();
 
     private static bool TryClaimFinger(int fingerId, MultiFingerCircleRotate owner)
     {
         if (s_FingerOwners.TryGetValue(fingerId, out var current))
-            return current == owner; // déjà à moi -> ok
+            return current == owner;
         s_FingerOwners[fingerId] = owner;
         return true;
     }
@@ -55,29 +63,35 @@ public class MultiFingerCircleRotate : MonoBehaviour
 
     private static void ReleaseAllFor(MultiFingerCircleRotate owner)
     {
-        // libère tous les doigts détenus par cet objet
+
         var toFree = new List<int>();
         foreach (var kv in s_FingerOwners)
             if (kv.Value == owner) toFree.Add(kv.Key);
         foreach (var id in toFree) s_FingerOwners.Remove(id);
     }
 
-    // --- Etat instance ---
+
     private readonly Dictionary<int, Vector2> ownedPrevPositions = new();
     private readonly Dictionary<int, float> fingerMovementDistances = new();
     private readonly Dictionary<int, Vector2> fingerStartPositions = new();
     private Vector2 prevCenter = Vector2.zero;
     private int stationaryFingerId = -1;
     private RotationAxis lockedRotationAxis = RotationAxis.None;
+
+
+    private Vector3 accumulatedRotation = Vector3.zero;
+    private Vector3 snappedTargetRotation = Vector3.zero;
+    private bool hasSetInitialSnap = false;
+
     private Camera mainCamera;
     private resetToOriPos resetScript;
 
-    // Mouse simulation
+
     private Vector2 lastMousePos;
     private bool mouseActive = false;
     private Vector2 mouseScreenCenter;
 
-    // À bloquer pendant la rotation (local au sous-arbre)
+
     private PartDuplicator[] _duplicators;
     private DraggablePart[]  _draggables;
     private bool _dupDisabled  = false;
@@ -105,13 +119,15 @@ public class MultiFingerCircleRotate : MonoBehaviour
         EnableDrag(true);
         EnableDrawing(true);
 
-        // libère tous les doigts éventuellement détenus
+
         ReleaseAllFor(this);
         ownedPrevPositions.Clear();
         fingerMovementDistances.Clear();
         fingerStartPositions.Clear();
         stationaryFingerId = -1;
         lockedRotationAxis = RotationAxis.None;
+        accumulatedRotation = Vector3.zero;
+        hasSetInitialSnap = false;
     }
 
     void Update()
@@ -147,15 +163,17 @@ public class MultiFingerCircleRotate : MonoBehaviour
             fingerStartPositions.Clear();
             stationaryFingerId = -1;
             lockedRotationAxis = RotationAxis.None;
+            accumulatedRotation = Vector3.zero;
+            hasSetInitialSnap = false;
             return;
         }
 
-        // rotation valide en cours -> bloque dup/drag/dessin pour CE sous-arbre uniquement
+
         EnableDuplication(false);
         EnableDrag(false);
         EnableDrawing(false);
 
-        // Track movement distances to find stationary finger
+
         foreach (var t in ownedTouches)
         {
             int id = t.fingerId;
@@ -178,7 +196,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
             }
         }
 
-        // Find the stationary finger (the one that moved the least)
+
         if (ownedTouches.Count >= 2)
         {
             float minDist = float.MaxValue;
@@ -197,15 +215,17 @@ public class MultiFingerCircleRotate : MonoBehaviour
             stationaryFingerId = minId;
         }
 
-        // Detect and lock rotation axis if enabled
+
         if (enableAxisLocking && lockedRotationAxis == RotationAxis.None)
         {
             lockedRotationAxis = DetectRotationAxis(ownedTouches);
+            if (showDebugLogs && lockedRotationAxis != RotationAxis.None)
+                Debug.Log($"[MultiFingerCircleRotate] Locked to {lockedRotationAxis} axis rotation");
         }
 
         Vector3 totalRotation = Vector3.zero;
 
-        // Get stationary finger position as pivot
+
         Vector2 pivotPos = Vector2.zero;
         bool hasPivot = false;
         foreach (var t in ownedTouches)
@@ -228,7 +248,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
                 continue;
             }
 
-            // Skip the stationary finger for rotation calculation
+
             if (id == stationaryFingerId)
             {
                 ownedPrevPositions[id] = t.position;
@@ -245,7 +265,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
                 continue;
             }
 
-            // Apply rotation based on locked axis
+
             if (enableAxisLocking)
             {
                 switch (lockedRotationAxis)
@@ -264,7 +284,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
             }
             else
             {
-                // No axis locking - allow all rotations
+
                 if (RotateX) totalRotation.x -= deltaMove.y * Sensitivity * 0.1f;
                 if (RotateY) totalRotation.y += deltaMove.x * Sensitivity * 0.1f;
                 if (RotateZ && hasPivot)
@@ -278,14 +298,22 @@ public class MultiFingerCircleRotate : MonoBehaviour
 
         if (totalRotation != Vector3.zero)
         {
-            ApplyRotation(totalRotation);
+            if (enableSnapping && Target != null)
+            {
+                ApplyIncrementalSnapping(totalRotation);
+            }
+            else
+            {
+                ApplyRotation(totalRotation);
+            }
+
             if (resetScript != null) resetScript.ResetActivityTimer();
         }
     }
 
     private void ProcessTouchOwnership()
     {
-        // Claim/release par phase
+
         for (int i = 0; i < Input.touchCount; i++)
         {
             Touch t = Input.touches[i];
@@ -295,7 +323,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
             {
                 if (RaycastHitThisObject(t.position))
                 {
-                    // tente de réserver ce doigt : si déjà pris par un autre objet, on ignore
+
                     if (TryClaimFinger(id, this))
                     {
                         if (autoAssignOnSelect)
@@ -317,7 +345,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
             }
         }
 
-        // purge des touches disparues (ex: perte d’événement)
+
         List<int> toRemove = null;
         foreach (int ownedId in ownedPrevPositions.Keys)
         {
@@ -341,7 +369,61 @@ public class MultiFingerCircleRotate : MonoBehaviour
     {
         if (touches.Count < MinFingerCount) return RotationAxis.None;
 
-        // Calculate total movement from start
+
+        if (touches.Count == 2 && RotateZ)
+        {
+
+            Vector2[] movements = new Vector2[2];
+            float[] distances = new float[2];
+
+            for (int i = 0; i < 2; i++)
+            {
+                if (fingerStartPositions.TryGetValue(touches[i].fingerId, out var startPos))
+                {
+                    movements[i] = touches[i].position - startPos;
+                    distances[i] = movements[i].magnitude;
+                }
+            }
+
+            if (showDebugLogs)
+                Debug.Log($"[MultiFingerCircleRotate] Z check: Finger0 dist={distances[0]:F1}, Finger1 dist={distances[1]:F1}");
+
+
+            int stationaryIndex = -1;
+            int movingIndex = -1;
+
+            if (distances[0] < stationaryThreshold && distances[1] >= axisDetectionThreshold)
+            {
+                stationaryIndex = 0;
+                movingIndex = 1;
+            }
+            else if (distances[1] < stationaryThreshold && distances[0] >= axisDetectionThreshold)
+            {
+                stationaryIndex = 1;
+                movingIndex = 0;
+            }
+
+
+            if (stationaryIndex >= 0 && movingIndex >= 0)
+            {
+                Vector2 movingDelta = movements[movingIndex];
+                float zAbsX = Mathf.Abs(movingDelta.x);
+                float zAbsY = Mathf.Abs(movingDelta.y);
+
+                if (showDebugLogs)
+                    Debug.Log($"[MultiFingerCircleRotate] Z motion: absX={zAbsX:F1}, absY={zAbsY:F1}");
+
+
+                if (zAbsX > zAbsY)
+                {
+                    if (showDebugLogs)
+                        Debug.Log("[MultiFingerCircleRotate] Detected Z rotation!");
+                    return RotationAxis.Z;
+                }
+            }
+        }
+
+
         Vector2 totalDelta = Vector2.zero;
         int validCount = 0;
 
@@ -359,39 +441,15 @@ public class MultiFingerCircleRotate : MonoBehaviour
         totalDelta /= validCount;
         float totalDistance = totalDelta.magnitude;
 
-        // Wait until enough movement to determine axis
+
         if (totalDistance < axisDetectionThreshold)
             return RotationAxis.None;
 
         float absX = Mathf.Abs(totalDelta.x);
         float absY = Mathf.Abs(totalDelta.y);
 
-        // Check if we have a stationary finger for Z rotation
-        bool hasStationaryFinger = false;
-        if (touches.Count >= 2 && stationaryFingerId != -1)
-        {
-            // Check if stationary finger really hasn't moved much
-            foreach (var t in touches)
-            {
-                if (t.fingerId == stationaryFingerId && fingerStartPositions.TryGetValue(t.fingerId, out var startPos))
-                {
-                    float stationaryMovement = Vector2.Distance(t.position, startPos);
-                    if (stationaryMovement < axisDetectionThreshold * 0.5f)
-                    {
-                        hasStationaryFinger = true;
-                        break;
-                    }
-                }
-            }
-        }
 
-        // If one finger is stationary and other moves horizontally, it's Z rotation
-        if (hasStationaryFinger && absX > absY && RotateZ)
-        {
-            return RotationAxis.Z;
-        }
-        // Otherwise, determine X or Y based on dominant movement
-        else if (absY > absX && RotateX)
+        if (absY > absX && RotateX)
         {
             return RotationAxis.X;
         }
@@ -409,7 +467,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
         for (int i = 0; i < Input.touchCount; i++)
         {
             var t = Input.touches[i];
-            // je ne prends que les doigts que J’AI claim
+
             if (s_FingerOwners.TryGetValue(t.fingerId, out var owner) && owner == this)
                 if (ownedPrevPositions.ContainsKey(t.fingerId))
                     list.Add(t);
@@ -459,7 +517,64 @@ public class MultiFingerCircleRotate : MonoBehaviour
         }
     }
 
-    // ---------- Auto-assign helpers ----------
+    private void ApplyIncrementalSnapping(Vector3 rotationDelta)
+    {
+        if (!Target || snapAngle <= 0) return;
+
+        // Initialize snapped target on first rotation
+        if (!hasSetInitialSnap)
+        {
+            Vector3 currentRotation = Target.localEulerAngles;
+            snappedTargetRotation = new Vector3(
+                SnapToNearest(currentRotation.x, snapAngle),
+                SnapToNearest(currentRotation.y, snapAngle),
+                SnapToNearest(currentRotation.z, snapAngle)
+            );
+            Target.localEulerAngles = snappedTargetRotation;
+            hasSetInitialSnap = true;
+            accumulatedRotation = Vector3.zero;
+            return;
+        }
+
+        // Accumulate rotation
+        accumulatedRotation += rotationDelta;
+
+        // Calculate what the new rotation would be
+        Vector3 potentialRotation = snappedTargetRotation + accumulatedRotation;
+
+        // Snap to nearest angle for each axis
+        Vector3 newSnappedRotation = new Vector3(
+            SnapToNearest(potentialRotation.x, snapAngle),
+            SnapToNearest(potentialRotation.y, snapAngle),
+            SnapToNearest(potentialRotation.z, snapAngle)
+        );
+
+        // Check if any axis changed to a new snap position
+        if (newSnappedRotation != snappedTargetRotation)
+        {
+            snappedTargetRotation = newSnappedRotation;
+            Target.localEulerAngles = snappedTargetRotation;
+
+            // Reset accumulation after snap
+            accumulatedRotation = Vector3.zero;
+
+            if (showDebugLogs)
+                Debug.Log($"[Snap] Snapped to: {snappedTargetRotation}");
+        }
+    }
+
+    private float SnapToNearest(float angle, float snapValue)
+    {
+
+        angle = angle % 360f;
+        if (angle < 0) angle += 360f;
+
+
+        float snapped = Mathf.Round(angle / snapValue) * snapValue;
+        return snapped;
+    }
+
+
     public void AssignTarget(Transform t)
     {
         Target = t;
@@ -472,7 +587,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
         if (Target) resetScript = Target.GetComponent<resetToOriPos>();
     }
 
-    // ---------- Toggles (local au sous-arbre) ----------
+
     private void EnableDuplication(bool enable)
     {
         if (_duplicators == null || _duplicators.Length == 0)
@@ -543,6 +658,8 @@ public class MultiFingerCircleRotate : MonoBehaviour
         {
             mouseActive = false;
             lockedRotationAxis = RotationAxis.None;
+            accumulatedRotation = Vector3.zero;
+            hasSetInitialSnap = false;
             EnableDuplication(true);
             EnableDrag(true);
             EnableDrawing(true);
@@ -554,7 +671,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
         Vector2 deltaMove = currPos - lastMousePos;
         Vector3 rotation = Vector3.zero;
 
-        // Detect axis on first significant movement
+
         if (enableAxisLocking && lockedRotationAxis == RotationAxis.None)
         {
             Vector2 totalMove = currPos - lastMousePos;
@@ -572,7 +689,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
             }
         }
 
-        // Apply rotation based on locked axis
+
         if (enableAxisLocking)
         {
             switch (lockedRotationAxis)
@@ -590,7 +707,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
         }
         else
         {
-            // No axis locking
+
             if (RotateX) rotation.x -= deltaMove.y * Sensitivity * 0.1f;
             if (RotateY) rotation.y += deltaMove.x * Sensitivity * 0.1f;
             if (RotateZ) rotation.z += deltaMove.x * Sensitivity * 0.5f;
@@ -598,7 +715,15 @@ public class MultiFingerCircleRotate : MonoBehaviour
 
         if (rotation != Vector3.zero)
         {
-            ApplyRotation(rotation);
+            if (enableSnapping && Target != null)
+            {
+                ApplyIncrementalSnapping(rotation);
+            }
+            else
+            {
+                ApplyRotation(rotation);
+            }
+
             if (resetScript != null) resetScript.ResetActivityTimer();
         }
 
