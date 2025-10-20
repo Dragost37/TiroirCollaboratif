@@ -1,301 +1,335 @@
-using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine;
 
-public class rescale : MonoBehaviour
+[RequireComponent(typeof(Collider))]
+public class PinchToScale : MonoBehaviour
 {
+    [Header("Target")]
+    public Transform Target;
+
     [Header("Scale Settings")]
-    [Tooltip("Minimum scale of the object")]
-    public float minScale = 0.1f;
+    public int MinFingerCount = 2;
+    public float Sensitivity = 1.0f;
+    public float MinScale = 0.1f;
+    public float MaxScale = 10.0f;
+    public bool UniformScale = true;
 
-    [Tooltip("Maximum scale of the object")]
-    public float maxScale = 10f;
+    [Header("Auto-assign Target")]
+    public bool autoAssignIfNull = true;
+    public bool useRootAsTarget = false;
 
-    [Tooltip("How smooth the scaling is (higher = smoother)")]
-    [Range(1f, 20f)]
-    public float scaleSmoothness = 10f;
-
-    [Header("Finger Requirements")]
-    [Tooltip("Scale threshold to require 2 fingers (thumb + index)")]
-    public float twoFingerThreshold = 1.0f;
-
-    [Tooltip("Scale threshold to require 3 fingers")]
-    public float threeFingerThreshold = 2.0f;
-
-    [Tooltip("Scale threshold to require 4 fingers")]
-    public float fourFingerThreshold = 4.0f;
-
-    [Tooltip("Scale threshold to require 5 fingers")]
-    public float fiveFingerThreshold = 7.0f;
-
-    [Header("Pinch Detection")]
-    [Tooltip("Distance threshold to detect a pinch")]
-    public float pinchThreshold = 0.03f;
-
-    [Tooltip("Sensitivity of scale changes")]
-    public float scaleSpeed = 2.0f;
-
-    [Header("Hand Tracking (Assign in Inspector)")]
-    [Tooltip("Transform for thumb tip")]
-    public Transform thumbTip;
-
-    [Tooltip("Transform for index finger tip")]
-    public Transform indexTip;
-
-    [Tooltip("Transform for middle finger tip")]
-    public Transform middleTip;
-
-    [Tooltip("Transform for ring finger tip")]
-    public Transform ringTip;
-
-    [Tooltip("Transform for pinky finger tip")]
-    public Transform pinkyTip;
+    [Header("Components to disable during scaling")]
+    public Behaviour[] componentsToDisable;
 
     [Header("Debug")]
-    public bool showDebugInfo = true;
+    public bool showDebugLogs = false;
 
-    // Private variables
-    private Vector3 targetScale;
-    private float initialPinchDistance;
-    private bool isPinching = false;
-    private int activePinchCount = 0;
-    private int requiredFingers = 1;
 
-    // Finger data structure
-    private class FingerPair
+    private static readonly Dictionary<int, PinchToScale> s_FingerOwners = new();
+
+    private static bool TryClaimFinger(int fingerId, PinchToScale owner)
     {
-        public Transform fingerTip;
-        public bool isPinching;
-        public float pinchDistance;
+        if (s_FingerOwners.TryGetValue(fingerId, out var current))
+            return current == owner;
+        s_FingerOwners[fingerId] = owner;
+        return true;
     }
 
-    private List<FingerPair> fingers = new List<FingerPair>();
+    private static void ReleaseFinger(int fingerId, PinchToScale owner)
+    {
+        if (s_FingerOwners.TryGetValue(fingerId, out var current) && current == owner)
+            s_FingerOwners.Remove(fingerId);
+    }
+
+    private static void ReleaseAllFor(PinchToScale owner)
+    {
+        var toFree = new List<int>();
+        foreach (var kv in s_FingerOwners)
+            if (kv.Value == owner) toFree.Add(kv.Key);
+        foreach (var id in toFree) s_FingerOwners.Remove(id);
+    }
+
+
+    private readonly Dictionary<int, Vector2> ownedPrevPositions = new();
+    private float previousFingerDistance = 0f;
+    private Vector3 initialScale;
+    private Camera mainCamera;
+    private resetToOriPos resetScript;
+    private bool isScaling = false;
+    private bool componentsDisabled = false;
+
+
+    private bool mouseActive = false;
+    private Vector2 lastMousePos;
+    private Vector2 mouseAnchorPos;
+    private float mouseInitialDistance;
+
+    void Reset()
+    {
+        Target = transform;
+    }
 
     void Start()
     {
-        targetScale = transform.localScale;
-        InitializeFingers();
+        mainCamera = Camera.main;
+
+        if (autoAssignIfNull && !Target)
+            Target = useRootAsTarget ? transform.root : transform;
+
+        if (Target)
+        {
+            initialScale = Target.localScale;
+            resetScript = Target.GetComponent<resetToOriPos>();
+        }
     }
 
-    void InitializeFingers()
+    void OnDisable()
     {
-        // Initialize finger tracking (index is always included, others are optional)
-        if (indexTip != null)
-        {
-            fingers.Add(new FingerPair { fingerTip = indexTip });
-        }
-
-        if (middleTip != null)
-        {
-            fingers.Add(new FingerPair { fingerTip = middleTip });
-        }
-
-        if (ringTip != null)
-        {
-            fingers.Add(new FingerPair { fingerTip = ringTip });
-        }
-
-        if (pinkyTip != null)
-        {
-            fingers.Add(new FingerPair { fingerTip = pinkyTip });
-        }
+        EnableComponents(true);
+        ReleaseAllFor(this);
+        ownedPrevPositions.Clear();
+        isScaling = false;
+        previousFingerDistance = 0f;
     }
 
     void Update()
     {
-        if (thumbTip == null || fingers.Count == 0)
+#if UNITY_EDITOR
+        HandleMouseSimulation();
+        if (mouseActive) return;
+#endif
+        ProcessTouchOwnership();
+
+        var ownedTouches = GetOwnedActiveTouches();
+
+        if (ownedTouches.Count < MinFingerCount)
         {
-            if (showDebugInfo)
-            {
-                Debug.LogWarning("Hand tracking transforms not assigned! Please assign thumb and at least index finger in the inspector.");
-            }
+            EnableComponents(true);
+            isScaling = false;
+            previousFingerDistance = 0f;
             return;
         }
 
-        // Determine how many fingers are required based on current scale
-        UpdateRequiredFingers();
 
-        // Detect pinches for each finger
-        DetectPinches();
+        float currentDistance = CalculateAverageFingerDistance(ownedTouches);
 
-        // Calculate scale change if enough fingers are pinching
-        if (activePinchCount >= requiredFingers)
+        if (currentDistance <= 0f)
         {
-            CalculateScale();
+            previousFingerDistance = 0f;
+            return;
         }
 
-        // Smoothly interpolate to target scale
-        transform.localScale = Vector3.Lerp(transform.localScale, targetScale, Time.deltaTime * scaleSmoothness);
-
-        // Debug information
-        if (showDebugInfo)
+        if (!isScaling || previousFingerDistance <= 0f)
         {
-            DisplayDebugInfo();
+
+            isScaling = true;
+            previousFingerDistance = currentDistance;
+            EnableComponents(false);
+
+            if (showDebugLogs)
+                Debug.Log($"[PinchToScale] Started scaling with {ownedTouches.Count} fingers, initial distance: {currentDistance}");
+
+            return;
         }
+
+
+        float distanceRatio = currentDistance / previousFingerDistance;
+
+        if (showDebugLogs)
+            Debug.Log($"[PinchToScale] Distance ratio: {distanceRatio}, current: {currentDistance}, prev: {previousFingerDistance}");
+
+        ApplyScale(distanceRatio);
+
+        if (resetScript != null)
+            resetScript.ResetActivityTimer();
+
+        previousFingerDistance = currentDistance;
+
+
+        foreach (var t in ownedTouches)
+            ownedPrevPositions[t.fingerId] = t.position;
     }
 
-    void UpdateRequiredFingers()
+    private void ProcessTouchOwnership()
     {
-        float currentScale = transform.localScale.x; // Assuming uniform scale
+        for (int i = 0; i < Input.touchCount; i++)
+        {
+            Touch t = Input.touches[i];
+            int id = t.fingerId;
 
-        if (currentScale >= fiveFingerThreshold)
-        {
-            requiredFingers = 5;
-        }
-        else if (currentScale >= fourFingerThreshold)
-        {
-            requiredFingers = 4;
-        }
-        else if (currentScale >= threeFingerThreshold)
-        {
-            requiredFingers = 3;
-        }
-        else if (currentScale >= twoFingerThreshold)
-        {
-            requiredFingers = 2;
-        }
-        else
-        {
-            requiredFingers = 1;
-        }
-    }
-
-    void DetectPinches()
-    {
-        activePinchCount = 0;
-        float totalPinchDistance = 0f;
-        int validPinches = 0;
-
-        foreach (var finger in fingers)
-        {
-            if (finger.fingerTip == null) continue;
-
-            // Calculate distance between thumb and this finger
-            finger.pinchDistance = Vector3.Distance(thumbTip.position, finger.fingerTip.position);
-
-            // Check if this finger is pinching
-            if (finger.pinchDistance < pinchThreshold)
+            if (t.phase == TouchPhase.Began)
             {
-                finger.isPinching = true;
-                activePinchCount++;
-                totalPinchDistance += finger.pinchDistance;
-                validPinches++;
+                if (RaycastHitThisObject(t.position))
+                {
+                    if (TryClaimFinger(id, this))
+                    {
+                        ownedPrevPositions[id] = t.position;
+
+                        if (showDebugLogs)
+                            Debug.Log($"[PinchToScale] Claimed finger {id}");
+                    }
+                }
             }
-            else
+            else if (t.phase == TouchPhase.Ended || t.phase == TouchPhase.Canceled)
             {
-                finger.isPinching = false;
+                if (ownedPrevPositions.ContainsKey(id))
+                {
+                    ownedPrevPositions.Remove(id);
+                    ReleaseFinger(id, this);
+
+                    if (showDebugLogs)
+                        Debug.Log($"[PinchToScale] Released finger {id}");
+                }
             }
         }
 
-        // Store the average pinch distance for scaling calculations
-        if (validPinches > 0 && activePinchCount >= requiredFingers)
+
+        List<int> toRemove = null;
+        foreach (int ownedId in ownedPrevPositions.Keys)
         {
-            if (!isPinching)
-            {
-                isPinching = true;
-                initialPinchDistance = totalPinchDistance / validPinches;
-            }
+            bool exists = false;
+            for (int i = 0; i < Input.touchCount; i++)
+                if (Input.touches[i].fingerId == ownedId) { exists = true; break; }
+            if (!exists) (toRemove ??= new List<int>()).Add(ownedId);
         }
-        else
+        if (toRemove != null)
         {
-            isPinching = false;
+            foreach (int id in toRemove)
+            {
+                ownedPrevPositions.Remove(id);
+                ReleaseFinger(id, this);
+            }
         }
     }
 
-    void CalculateScale()
+    private List<Touch> GetOwnedActiveTouches()
     {
-        if (!isPinching) return;
+        var list = new List<Touch>();
+        for (int i = 0; i < Input.touchCount; i++)
+        {
+            var t = Input.touches[i];
+            if (s_FingerOwners.TryGetValue(t.fingerId, out var owner) && owner == this)
+                if (ownedPrevPositions.ContainsKey(t.fingerId))
+                    list.Add(t);
+        }
+        return list;
+    }
 
-        // Calculate average distance of active pinches
+    private bool RaycastHitThisObject(Vector2 screenPos)
+    {
+        if (!mainCamera) mainCamera = Camera.main;
+        Ray ray = mainCamera.ScreenPointToRay(screenPos);
+        return Physics.Raycast(ray, out var hit) && hit.collider && hit.collider.gameObject == gameObject;
+    }
+
+    private float CalculateAverageFingerDistance(List<Touch> touches)
+    {
+        if (touches == null || touches.Count < 2) return 0f;
+
         float totalDistance = 0f;
-        int count = 0;
+        int pairCount = 0;
 
-        foreach (var finger in fingers)
+
+        for (int i = 0; i < touches.Count; i++)
         {
-            if (finger.isPinching)
+            for (int j = i + 1; j < touches.Count; j++)
             {
-                totalDistance += finger.pinchDistance;
-                count++;
+                totalDistance += Vector2.Distance(touches[i].position, touches[j].position);
+                pairCount++;
             }
         }
 
-        if (count == 0) return;
-
-        float averageDistance = totalDistance / count;
-
-        // Calculate scale change based on pinch distance change
-        float distanceRatio = averageDistance / initialPinchDistance;
-        float scaleChange = (distanceRatio - 1f) * scaleSpeed * Time.deltaTime;
-
-        // Apply scale change
-        Vector3 newScale = targetScale + Vector3.one * scaleChange;
-
-        // Clamp scale
-        float clampedScale = Mathf.Clamp(newScale.x, minScale, maxScale);
-        targetScale = Vector3.one * clampedScale;
-
-        // Update initial distance for next frame
-        initialPinchDistance = averageDistance;
+        return pairCount > 0 ? totalDistance / pairCount : 0f;
     }
 
-    void DisplayDebugInfo()
+    private void ApplyScale(float ratio)
     {
-        string debugText = $"Current Scale: {transform.localScale.x:F2}\n";
-        debugText += $"Required Fingers: {requiredFingers}\n";
-        debugText += $"Active Pinches: {activePinchCount}\n";
-        debugText += $"Pinching: {isPinching}\n";
+        if (!Target) return;
 
-        for (int i = 0; i < fingers.Count; i++)
+        Vector3 currentScale = Target.localScale;
+        Vector3 newScale;
+
+        if (UniformScale)
         {
-            string fingerName = GetFingerName(i);
-            if (fingers[i].fingerTip != null)
+            newScale = currentScale * ratio;
+        }
+        else
+        {
+            newScale = new Vector3(
+                currentScale.x * ratio,
+                currentScale.y * ratio,
+                currentScale.z
+            );
+        }
+
+        newScale.x = Mathf.Clamp(newScale.x, MinScale, MaxScale);
+        newScale.y = Mathf.Clamp(newScale.y, MinScale, MaxScale);
+        newScale.z = Mathf.Clamp(newScale.z, MinScale, MaxScale);
+
+        Target.localScale = newScale;
+    }
+
+    private void EnableComponents(bool enable)
+    {
+        if (componentsToDisable == null) return;
+
+        if (enable && !componentsDisabled) return;
+        if (!enable && componentsDisabled) return;
+
+        foreach (var comp in componentsToDisable)
+            if (comp) comp.enabled = enable;
+
+        componentsDisabled = !enable;
+    }
+
+    #region Mouse Simulation (Editor)
+    private void HandleMouseSimulation()
+    {
+        if (Input.GetMouseButtonDown(0))
+        {
+            if (RaycastHitThisObject(Input.mousePosition))
             {
-                debugText += $"{fingerName}: {(fingers[i].isPinching ? "PINCH" : "Open")} ({fingers[i].pinchDistance:F3}m)\n";
+                mouseActive = true;
+                lastMousePos = Input.mousePosition;
+                mouseAnchorPos = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+                mouseInitialDistance = Vector2.Distance(lastMousePos, mouseAnchorPos);
+
+                EnableComponents(false);
+
+                if (showDebugLogs)
+                    Debug.Log($"[PinchToScale] Mouse scaling started, initial distance: {mouseInitialDistance}");
+            }
+        }
+        else if (Input.GetMouseButtonUp(0))
+        {
+            if (mouseActive)
+            {
+                mouseActive = false;
+                EnableComponents(true);
+
+                if (showDebugLogs)
+                    Debug.Log("[PinchToScale] Mouse scaling ended");
             }
         }
 
-        // Only log occasionally to avoid spam
-        if (Time.frameCount % 30 == 0)
+        if (mouseActive)
         {
-            Debug.Log(debugText);
+            Vector2 currentMousePos = Input.mousePosition;
+            float currentDistance = Vector2.Distance(currentMousePos, mouseAnchorPos);
+
+            if (mouseInitialDistance > 0f && currentDistance > 0f)
+            {
+                float ratio = currentDistance / mouseInitialDistance;
+                ApplyScale(ratio);
+
+                if (resetScript != null)
+                    resetScript.ResetActivityTimer();
+
+                mouseInitialDistance = currentDistance;
+            }
+
+            lastMousePos = currentMousePos;
         }
     }
-
-    string GetFingerName(int index)
-    {
-        string[] names = { "Index", "Middle", "Ring", "Pinky" };
-        return index < names.Length ? names[index] : "Unknown";
-    }
-
-    // Visual debug helpers
-    void OnDrawGizmos()
-    {
-        if (!showDebugInfo || thumbTip == null) return;
-
-        // Draw lines from thumb to each finger
-        Gizmos.color = Color.yellow;
-
-        if (indexTip != null)
-        {
-            Gizmos.color = Vector3.Distance(thumbTip.position, indexTip.position) < pinchThreshold ? Color.green : Color.red;
-            Gizmos.DrawLine(thumbTip.position, indexTip.position);
-        }
-
-        if (middleTip != null)
-        {
-            Gizmos.color = Vector3.Distance(thumbTip.position, middleTip.position) < pinchThreshold ? Color.green : Color.red;
-            Gizmos.DrawLine(thumbTip.position, middleTip.position);
-        }
-
-        if (ringTip != null)
-        {
-            Gizmos.color = Vector3.Distance(thumbTip.position, ringTip.position) < pinchThreshold ? Color.green : Color.red;
-            Gizmos.DrawLine(thumbTip.position, ringTip.position);
-        }
-
-        if (pinkyTip != null)
-        {
-            Gizmos.color = Vector3.Distance(thumbTip.position, pinkyTip.position) < pinchThreshold ? Color.green : Color.red;
-            Gizmos.DrawLine(thumbTip.position, pinkyTip.position);
-        }
-    }
+    #endregion
 }

@@ -57,7 +57,9 @@ public class MultiFingerCircleRotate : MonoBehaviour
 
     // --- Etat instance ---
     private readonly Dictionary<int, Vector2> ownedPrevPositions = new();
+    private readonly Dictionary<int, float> fingerMovementDistances = new();
     private Vector2 prevCenter = Vector2.zero;
+    private int stationaryFingerId = -1;
     private Camera mainCamera;
     private resetToOriPos resetScript;
 
@@ -97,6 +99,8 @@ public class MultiFingerCircleRotate : MonoBehaviour
         // libère tous les doigts éventuellement détenus
         ReleaseAllFor(this);
         ownedPrevPositions.Clear();
+        fingerMovementDistances.Clear();
+        stationaryFingerId = -1;
     }
 
     void Update()
@@ -128,6 +132,8 @@ public class MultiFingerCircleRotate : MonoBehaviour
             EnableDrag(true);
             EnableDrawing(true);
             prevCenter = center;
+            fingerMovementDistances.Clear();
+            stationaryFingerId = -1;
             return;
         }
 
@@ -136,13 +142,74 @@ public class MultiFingerCircleRotate : MonoBehaviour
         EnableDrag(false);
         EnableDrawing(false);
 
+        // Track movement distances to find stationary finger
+        foreach (var t in ownedTouches)
+        {
+            int id = t.fingerId;
+            if (!ownedPrevPositions.ContainsKey(id))
+            {
+                ownedPrevPositions[id] = t.position;
+                fingerMovementDistances[id] = 0f;
+            }
+            else
+            {
+                Vector2 prevPos = ownedPrevPositions[id];
+                Vector2 currPos = t.position;
+                float moveDist = Vector2.Distance(currPos, prevPos);
+
+                if (!fingerMovementDistances.ContainsKey(id))
+                    fingerMovementDistances[id] = moveDist;
+                else
+                    fingerMovementDistances[id] += moveDist;
+            }
+        }
+
+        // Find the stationary finger (the one that moved the least)
+        if (ownedTouches.Count >= 2)
+        {
+            float minDist = float.MaxValue;
+            int minId = -1;
+            foreach (var t in ownedTouches)
+            {
+                if (fingerMovementDistances.TryGetValue(t.fingerId, out float dist))
+                {
+                    if (dist < minDist)
+                    {
+                        minDist = dist;
+                        minId = t.fingerId;
+                    }
+                }
+            }
+            stationaryFingerId = minId;
+        }
+
         Vector3 totalRotation = Vector3.zero;
+
+        // Get stationary finger position as pivot
+        Vector2 pivotPos = Vector2.zero;
+        bool hasPivot = false;
+        foreach (var t in ownedTouches)
+        {
+            if (t.fingerId == stationaryFingerId)
+            {
+                pivotPos = t.position;
+                hasPivot = true;
+                break;
+            }
+        }
 
         foreach (var t in ownedTouches)
         {
             int id = t.fingerId;
 
             if (!ownedPrevPositions.ContainsKey(id))
+            {
+                ownedPrevPositions[id] = t.position;
+                continue;
+            }
+
+            // Skip the stationary finger for rotation calculation
+            if (id == stationaryFingerId)
             {
                 ownedPrevPositions[id] = t.position;
                 continue;
@@ -158,13 +225,15 @@ public class MultiFingerCircleRotate : MonoBehaviour
                 continue;
             }
 
+            // X and Y rotation based on swipe direction
             if (RotateX) totalRotation.x -= deltaMove.y * Sensitivity * 0.1f;
             if (RotateY) totalRotation.y += deltaMove.x * Sensitivity * 0.1f;
 
-            if (RotateZ)
+            // Z rotation uses stationary finger as pivot
+            if (RotateZ && hasPivot)
             {
-                Vector2 prevVec = prevPos - prevCenter;
-                Vector2 currVec = currPos - center;
+                Vector2 prevVec = prevPos - pivotPos;
+                Vector2 currVec = currPos - pivotPos;
 
                 if (prevVec.sqrMagnitude > 0.0001f && currVec.sqrMagnitude > 0.0001f)
                 {
@@ -391,9 +460,11 @@ public class MultiFingerCircleRotate : MonoBehaviour
         Vector2 deltaMove = currPos - lastMousePos;
         Vector3 rotation = Vector3.zero;
 
+        // X and Y rotation based on swipe
         if (RotateX) rotation.x -= deltaMove.y * Sensitivity * 0.1f;
         if (RotateY) rotation.y += deltaMove.x * Sensitivity * 0.1f;
 
+        // Z rotation
         if (RotateZ)
         {
             Vector2 prevVec = lastMousePos - mouseScreenCenter;
