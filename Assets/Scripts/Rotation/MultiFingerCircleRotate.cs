@@ -4,6 +4,8 @@ using UnityEngine;
 [RequireComponent(typeof(Collider))]
 public class MultiFingerCircleRotate : MonoBehaviour
 {
+    public enum RotationAxis { None, X, Y, Z }
+
     [Header("Target")]
     public Transform Target;
 
@@ -20,6 +22,11 @@ public class MultiFingerCircleRotate : MonoBehaviour
     public bool RotateY = true;
     public bool RotateZ = true;
     public bool UseWorldSpace = true;
+
+    [Header("Axis Locking")]
+    public bool enableAxisLocking = true;
+    [Tooltip("Minimum movement to detect rotation axis")]
+    public float axisDetectionThreshold = 15f;
 
     [Header("Gesture detection extras")]
     public float MinRadiusPixels = 10f;
@@ -58,8 +65,10 @@ public class MultiFingerCircleRotate : MonoBehaviour
     // --- Etat instance ---
     private readonly Dictionary<int, Vector2> ownedPrevPositions = new();
     private readonly Dictionary<int, float> fingerMovementDistances = new();
+    private readonly Dictionary<int, Vector2> fingerStartPositions = new();
     private Vector2 prevCenter = Vector2.zero;
     private int stationaryFingerId = -1;
+    private RotationAxis lockedRotationAxis = RotationAxis.None;
     private Camera mainCamera;
     private resetToOriPos resetScript;
 
@@ -100,7 +109,9 @@ public class MultiFingerCircleRotate : MonoBehaviour
         ReleaseAllFor(this);
         ownedPrevPositions.Clear();
         fingerMovementDistances.Clear();
+        fingerStartPositions.Clear();
         stationaryFingerId = -1;
+        lockedRotationAxis = RotationAxis.None;
     }
 
     void Update()
@@ -133,7 +144,9 @@ public class MultiFingerCircleRotate : MonoBehaviour
             EnableDrawing(true);
             prevCenter = center;
             fingerMovementDistances.Clear();
+            fingerStartPositions.Clear();
             stationaryFingerId = -1;
+            lockedRotationAxis = RotationAxis.None;
             return;
         }
 
@@ -150,6 +163,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
             {
                 ownedPrevPositions[id] = t.position;
                 fingerMovementDistances[id] = 0f;
+                fingerStartPositions[id] = t.position;
             }
             else
             {
@@ -181,6 +195,12 @@ public class MultiFingerCircleRotate : MonoBehaviour
                 }
             }
             stationaryFingerId = minId;
+        }
+
+        // Detect and lock rotation axis if enabled
+        if (enableAxisLocking && lockedRotationAxis == RotationAxis.None)
+        {
+            lockedRotationAxis = DetectRotationAxis(ownedTouches);
         }
 
         Vector3 totalRotation = Vector3.zero;
@@ -225,27 +245,30 @@ public class MultiFingerCircleRotate : MonoBehaviour
                 continue;
             }
 
-            // X and Y rotation based on swipe direction
-            if (RotateX) totalRotation.x -= deltaMove.y * Sensitivity * 0.1f;
-            if (RotateY) totalRotation.y += deltaMove.x * Sensitivity * 0.1f;
-
-            // Z rotation uses stationary finger as pivot
-            if (RotateZ && hasPivot)
+            // Apply rotation based on locked axis
+            if (enableAxisLocking)
             {
-                Vector2 prevVec = prevPos - pivotPos;
-                Vector2 currVec = currPos - pivotPos;
-
-                if (prevVec.sqrMagnitude > 0.0001f && currVec.sqrMagnitude > 0.0001f)
+                switch (lockedRotationAxis)
                 {
-                    float anglePrev = Mathf.Atan2(prevVec.y, prevVec.x);
-                    float angleCurr = Mathf.Atan2(currVec.y, currVec.x);
-                    float delta = Mathf.DeltaAngle(anglePrev * Mathf.Rad2Deg, angleCurr * Mathf.Rad2Deg);
-
-                    Vector2 tangent = new Vector2(-currVec.y, currVec.x).normalized;
-                    float align = Mathf.Abs(Vector2.Dot(deltaMove.normalized, tangent));
-                    if (align >= TangentAlignmentThreshold)
-                        totalRotation.z += delta * Sensitivity * 0.5f;
+                    case RotationAxis.X:
+                        if (RotateX) totalRotation.x -= deltaMove.y * Sensitivity * 0.1f;
+                        break;
+                    case RotationAxis.Y:
+                        if (RotateY) totalRotation.y += deltaMove.x * Sensitivity * 0.1f;
+                        break;
+                    case RotationAxis.Z:
+                        if (RotateZ && hasPivot)
+                            totalRotation.z += deltaMove.x * Sensitivity * 0.5f;
+                        break;
                 }
+            }
+            else
+            {
+                // No axis locking - allow all rotations
+                if (RotateX) totalRotation.x -= deltaMove.y * Sensitivity * 0.1f;
+                if (RotateY) totalRotation.y += deltaMove.x * Sensitivity * 0.1f;
+                if (RotateZ && hasPivot)
+                    totalRotation.z += deltaMove.x * Sensitivity * 0.5f;
             }
 
             ownedPrevPositions[id] = currPos;
@@ -281,6 +304,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
                             if (Target != newTarget) AssignTarget(newTarget);
                         }
                         ownedPrevPositions[id] = t.position;
+                        fingerStartPositions[id] = t.position;
                     }
                 }
             }
@@ -288,6 +312,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
             {
                 if (ownedPrevPositions.ContainsKey(id))
                     ownedPrevPositions.Remove(id);
+                fingerStartPositions.Remove(id);
                 ReleaseFinger(id, this);
             }
         }
@@ -306,9 +331,76 @@ public class MultiFingerCircleRotate : MonoBehaviour
             foreach (int id in toRemove)
             {
                 ownedPrevPositions.Remove(id);
+                fingerStartPositions.Remove(id);
                 ReleaseFinger(id, this);
             }
         }
+    }
+
+    private RotationAxis DetectRotationAxis(List<Touch> touches)
+    {
+        if (touches.Count < MinFingerCount) return RotationAxis.None;
+
+        // Calculate total movement from start
+        Vector2 totalDelta = Vector2.zero;
+        int validCount = 0;
+
+        foreach (var t in touches)
+        {
+            if (fingerStartPositions.TryGetValue(t.fingerId, out var startPos))
+            {
+                totalDelta += t.position - startPos;
+                validCount++;
+            }
+        }
+
+        if (validCount == 0) return RotationAxis.None;
+
+        totalDelta /= validCount;
+        float totalDistance = totalDelta.magnitude;
+
+        // Wait until enough movement to determine axis
+        if (totalDistance < axisDetectionThreshold)
+            return RotationAxis.None;
+
+        float absX = Mathf.Abs(totalDelta.x);
+        float absY = Mathf.Abs(totalDelta.y);
+
+        // Check if we have a stationary finger for Z rotation
+        bool hasStationaryFinger = false;
+        if (touches.Count >= 2 && stationaryFingerId != -1)
+        {
+            // Check if stationary finger really hasn't moved much
+            foreach (var t in touches)
+            {
+                if (t.fingerId == stationaryFingerId && fingerStartPositions.TryGetValue(t.fingerId, out var startPos))
+                {
+                    float stationaryMovement = Vector2.Distance(t.position, startPos);
+                    if (stationaryMovement < axisDetectionThreshold * 0.5f)
+                    {
+                        hasStationaryFinger = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // If one finger is stationary and other moves horizontally, it's Z rotation
+        if (hasStationaryFinger && absX > absY && RotateZ)
+        {
+            return RotationAxis.Z;
+        }
+        // Otherwise, determine X or Y based on dominant movement
+        else if (absY > absX && RotateX)
+        {
+            return RotationAxis.X;
+        }
+        else if (absX > absY && RotateY)
+        {
+            return RotationAxis.Y;
+        }
+
+        return RotationAxis.None;
     }
 
     private List<Touch> GetOwnedActiveTouches()
@@ -436,6 +528,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
                 mouseActive = true;
                 lastMousePos = Input.mousePosition;
                 mouseScreenCenter = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+                lockedRotationAxis = RotationAxis.None;
 
                 EnableDuplication(false);
                 EnableDrag(false);
@@ -449,6 +542,7 @@ public class MultiFingerCircleRotate : MonoBehaviour
         else if (Input.GetMouseButtonUp(0))
         {
             mouseActive = false;
+            lockedRotationAxis = RotationAxis.None;
             EnableDuplication(true);
             EnableDrag(true);
             EnableDrawing(true);
@@ -460,27 +554,46 @@ public class MultiFingerCircleRotate : MonoBehaviour
         Vector2 deltaMove = currPos - lastMousePos;
         Vector3 rotation = Vector3.zero;
 
-        // X and Y rotation based on swipe
-        if (RotateX) rotation.x -= deltaMove.y * Sensitivity * 0.1f;
-        if (RotateY) rotation.y += deltaMove.x * Sensitivity * 0.1f;
-
-        // Z rotation
-        if (RotateZ)
+        // Detect axis on first significant movement
+        if (enableAxisLocking && lockedRotationAxis == RotationAxis.None)
         {
-            Vector2 prevVec = lastMousePos - mouseScreenCenter;
-            Vector2 currVec = currPos      - mouseScreenCenter;
+            Vector2 totalMove = currPos - lastMousePos;
+            float totalDist = totalMove.magnitude;
 
-            if (prevVec.sqrMagnitude > 0.0001f && currVec.sqrMagnitude > 0.0001f)
+            if (totalDist >= axisDetectionThreshold)
             {
-                float anglePrev = Mathf.Atan2(prevVec.y, prevVec.x);
-                float angleCurr = Mathf.Atan2(currVec.y, currVec.x);
-                float delta = Mathf.DeltaAngle(anglePrev * Mathf.Rad2Deg, angleCurr * Mathf.Rad2Deg);
+                float absX = Mathf.Abs(totalMove.x);
+                float absY = Mathf.Abs(totalMove.y);
 
-                Vector2 tangent = new Vector2(-currVec.y, currVec.x).normalized;
-                float align = Mathf.Abs(Vector2.Dot(deltaMove.normalized, tangent));
-                if (align >= TangentAlignmentThreshold)
-                    rotation.z += delta * Sensitivity * 0.5f;
+                if (absY > absX && RotateX)
+                    lockedRotationAxis = RotationAxis.X;
+                else if (absX > absY && RotateY)
+                    lockedRotationAxis = RotationAxis.Y;
             }
+        }
+
+        // Apply rotation based on locked axis
+        if (enableAxisLocking)
+        {
+            switch (lockedRotationAxis)
+            {
+                case RotationAxis.X:
+                    if (RotateX) rotation.x -= deltaMove.y * Sensitivity * 0.1f;
+                    break;
+                case RotationAxis.Y:
+                    if (RotateY) rotation.y += deltaMove.x * Sensitivity * 0.1f;
+                    break;
+                case RotationAxis.Z:
+                    if (RotateZ) rotation.z += deltaMove.x * Sensitivity * 0.5f;
+                    break;
+            }
+        }
+        else
+        {
+            // No axis locking
+            if (RotateX) rotation.x -= deltaMove.y * Sensitivity * 0.1f;
+            if (RotateY) rotation.y += deltaMove.x * Sensitivity * 0.1f;
+            if (RotateZ) rotation.z += deltaMove.x * Sensitivity * 0.5f;
         }
 
         if (rotation != Vector3.zero)
