@@ -387,11 +387,15 @@ MonoBehaviour:
   useRootAsTarget: 0
   MinFingerCount: 2
   Sensitivity: 1
-  TangentAlignmentThreshold: 0.7
   RotateX: 1
   RotateY: 1
   RotateZ: 0
   UseWorldSpace: 1
+  ZSmoothFactor: 0.35
+  ZDeadZonePx: 3
+  ZMaxDegPerFrame: 8
+  AdaptiveGain: 1
+  GainPerMeter: 0.15
   enableAxisLocking: 1
   axisDetectionThreshold: 15
   stationaryThreshold: 20
@@ -606,11 +610,15 @@ MonoBehaviour:
   useRootAsTarget: 0
   MinFingerCount: 2
   Sensitivity: 1
-  TangentAlignmentThreshold: 0.7
   RotateX: 1
   RotateY: 1
   RotateZ: 1
   UseWorldSpace: 1
+  ZSmoothFactor: 0.35
+  ZDeadZonePx: 3
+  ZMaxDegPerFrame: 8
+  AdaptiveGain: 1
+  GainPerMeter: 0.15
   enableAxisLocking: 1
   axisDetectionThreshold: 15
   stationaryThreshold: 20
