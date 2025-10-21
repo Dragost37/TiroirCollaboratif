@@ -6,49 +6,65 @@ public class ShapeRecognizer : MonoBehaviour
     public ObjectCreator objectCreator;
     public GameObject radialMenu;
 
-    // Analyse une forme dessinée et détecte un carré ou un rectangle
+    [Header("Seuils de détection")]
+    [Range(0f, 1f)] public float circleToleranceFactor = 0.25f;  // Tolérance pour cercle
+    [Range(0f, 50f)] public float minCornerAngle = 40f;          // Angle minimum pour un coin de triangle
+
     public void AnalyzeShape(List<Vector2> points)
     {
-        //Debug.Log("Analyse de la forme dessinée avec " + points.Count + " points");
+        if (points == null || points.Count < 3)
+        {
+            Debug.Log("Pas assez de points pour analyser");
+            return;
+        }
 
-
+        // Calcul de la bounding box et longueur totale du tracé
         float minX = points[0].x, maxX = points[0].x;
         float minY = points[0].y, maxY = points[0].y;
+        float totalLength = 0f;
 
-        foreach (var p in points)
+        for (int i = 1; i < points.Count; i++)
         {
-            if (p.x < minX) minX = p.x;
-            if (p.x > maxX) maxX = p.x;
-            if (p.y < minY) minY = p.y;
-            if (p.y > maxY) maxY = p.y;
+            totalLength += Vector2.Distance(points[i - 1], points[i]);
+
+            if (points[i].x < minX) minX = points[i].x;
+            if (points[i].x > maxX) maxX = points[i].x;
+            if (points[i].y < minY) minY = points[i].y;
+            if (points[i].y > maxY) maxY = points[i].y;
         }
 
         float width = maxX - minX;
         float height = maxY - minY;
-        if (width < 0.05f && height < 0.05f) // seuil à ajuster selon l’échelle de ton canvas
-        {
-            return;
-        }
 
-        // Détection d’un trait
-        if (width < height * 0.2f || height < width * 0.2f)
+        // Forme trop petite
+        if (width < 0.05f && height < 0.05f)
+            return;
+
+        // Calcul du centre
+        Vector2 center = new Vector2(minX + width / 2, minY + height / 2);
+
+        // Détection de trait en se basant sur la longueur et la diagonale
+        float diagonal = Mathf.Sqrt(width * width + height * height);
+        float straightness = diagonal / totalLength; // proche de 1 = ligne droite
+
+        if (straightness > 0.95f) // seuil ajustable
         {
-            Debug.Log("Trait détecté");
+            Debug.Log("Trait détecté (même en diagonale)");
             radialMenu.SetActive(true);
             return;
         }
 
+        // Autres formes
         float aspectRatio = width > height ? width / height : height / width;
+
         if (aspectRatio < 1.5f)
         {
             Debug.Log("Carré détecté");
-            Vector2 center = new Vector2(minX + width / 2, minY + height / 2);
             objectCreator.CreateSquareObject(center, width);
         }
         else
         {
             Debug.Log("Rectangle détecté");
-            Vector2 center = new Vector2(minX + width / 2, minY + height / 2);
             objectCreator.CreateRectangleObject(center, width, height);
         }
     }

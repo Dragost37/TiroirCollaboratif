@@ -44,4 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1b29cdd94f4ed473c991c4049e0ee125, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShapeRecognizer
-  objectCreator: {fileID: 0}
+  objectCreator: {fileID: 3108435306140609420, guid: 3b2f720dd65764631930345c358d6050, type: 3}
+  radialMenu: {fileID: 4982323930838272581, guid: dd86c01e79bd3462d85d0f3557eaa198, type: 3}

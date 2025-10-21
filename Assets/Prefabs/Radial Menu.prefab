@@ -135,7 +135,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: '::'
   radialMenu: {fileID: 4982323930838272581}
-  objectCreator: {fileID: 0}
+  objectCreator: {fileID: 3108435306140609420, guid: 3b2f720dd65764631930345c358d6050, type: 3}
 --- !u!1 &4982323930838272581
 GameObject:
   m_ObjectHideFlags: 0
@@ -149,7 +149,7 @@ GameObject:
   - component: {fileID: 6318231468287706810}
   - component: {fileID: 5178959912082907617}
   m_Layer: 5
-  m_Name: Radial Menu 1
+  m_Name: Radial Menu
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -449,7 +449,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: '::'
   radialMenu: {fileID: 4982323930838272581}
-  objectCreator: {fileID: 0}
+  objectCreator: {fileID: 3108435306140609420, guid: 3b2f720dd65764631930345c358d6050, type: 3}
 --- !u!1 &7987606228680799619
 GameObject:
   m_ObjectHideFlags: 0
