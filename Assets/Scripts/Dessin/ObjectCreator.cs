@@ -1,4 +1,8 @@
+using System.Collections;
+using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
+
 
 public class ObjectCreator : MonoBehaviour
 {
@@ -88,32 +92,101 @@ public class ObjectCreator : MonoBehaviour
         // Ajouter les scripts communs si nécessaire
         CopyAllScripts(gameObjectScripts, newWood);
     }
-
     private void CopyAllScripts(GameObject source, GameObject target)
     {
-        if (source == null || target == null)
-            return;
+        if (!source || !target) return;
 
-        MonoBehaviour[] sourceScripts = source.GetComponents<MonoBehaviour>();
-        foreach (MonoBehaviour sourceScript in sourceScripts)
+        var srcBehaviours = source.GetComponents<MonoBehaviour>();
+
+        // 1) Créer TOUTES les instances (pas de filtre anti-doublon)
+        var map = new Dictionary<Component, Component>(srcBehaviours.Length);
+        foreach (var src in srcBehaviours)
         {
-            if (sourceScript == null)
-                continue;
+            if (!src) continue;
+            var dst = target.AddComponent(src.GetType());
+            map[src] = dst;
+        }
 
-            System.Type type = sourceScript.GetType();
-            if (target.GetComponent(type) != null)
-                continue;
+        // 2) Copier champs sérialisés en REMAPPANT les références
+        var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        foreach (var src in srcBehaviours)
+        {
+            if (!src) continue;
+            var dst = map[src];
+            var type = src.GetType();
 
-            MonoBehaviour targetScript = (MonoBehaviour)target.AddComponent(type);
-
-            var fields = type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            foreach (var field in fields)
+            foreach (var f in type.GetFields(flags))
             {
-                if (field.IsPublic || field.GetCustomAttributes(typeof(SerializeField), true).Length > 0)
-                {
-                    field.SetValue(targetScript, field.GetValue(sourceScript));
-                }
+                bool isSerialized = f.IsPublic || System.Attribute.IsDefined(f, typeof(SerializeField));
+                if (!isSerialized) continue;
+
+                object value = f.GetValue(src);
+                f.SetValue(dst, RemapValue(value, source, target, map));
             }
         }
+
+        // 3) Post-fix : binder les FCA du CUBE sur SON TouchInteractable, puis resync
+        var targetTI = target.GetComponent<TouchInteractable>();
+        var fcas = target.GetComponents<FingerCountActivator>();
+        foreach (var fca in fcas)
+        {
+            if (targetTI) fca.interactable = targetTI;
+            // éteindre tes "modes" par défaut (évite le ON initial)
+            if (fca.logicScripts != null)
+                foreach (var mb in fca.logicScripts) if (mb) mb.enabled = false;
+
+            fca.enabled = true;      // s'assure qu'il est actif
+            fca.ForceSync();         // <— IMPORTANT : applique l'état (count=0 à la création)
+        }
+
+        // 4) DEBUG : imprime ce qu’il y a vraiment sur le target
+        Debug.Log($"[CopyAllScripts] Target '{target.name}' → TI={(targetTI ? targetTI.name : "none")}  FCA count={fcas.Length}");
+        int i = 0;
+        foreach (var fca in fcas)
+            Debug.Log($"[CopyAllScripts]   FCA[{i++}] rule={fca.ruleMode} thr={fca.threshold}/{fca.thresholdMax} interactable={(fca.interactable ? fca.interactable.name : "null")}");
     }
+
+    private object RemapValue(object value, GameObject srcGO, GameObject dstGO, Dictionary<Component, Component> map)
+    {
+        if (value == null) return null;
+
+        if (value is Component c)
+        {
+            if (map.TryGetValue(c, out var mapped)) return mapped;
+            if (c.gameObject == srcGO)
+            {
+                var dstComp = dstGO.GetComponent(c.GetType());
+                if (dstComp) return dstComp;
+            }
+            return value;
+        }
+
+        if (value is GameObject go) return go == srcGO ? dstGO : value;
+
+        if (value is Object[] arr)
+        {
+            var elemType = value.GetType().GetElementType();
+            var newArr = (Object[])System.Array.CreateInstance(elemType, arr.Length);
+            for (int i = 0; i < arr.Length; i++)
+                newArr[i] = (Object)RemapValue(arr[i], srcGO, dstGO, map);
+            return newArr;
+        }
+
+        var t = value.GetType();
+        if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(List<>))
+        {
+            var elemType = t.GetGenericArguments()[0];
+            if (typeof(Object).IsAssignableFrom(elemType))
+            {
+                var srcList = (IList)value;
+                var dstList = (IList)System.Activator.CreateInstance(t);
+                for (int i = 0; i < srcList.Count; i++)
+                    dstList.Add(RemapValue(srcList[i], srcGO, dstGO, map));
+                return dstList;
+            }
+        }
+
+        return value;
+    }
+
 }

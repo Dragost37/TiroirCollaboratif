@@ -1,45 +1,64 @@
-using System.Collections.Generic;
+ï»¿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 
-[System.Serializable]
-public class IntEvent : UnityEvent<int> { }
+[System.Serializable] public class IntEvent : UnityEvent<int> { }
 
 public class TouchInteractable : MonoBehaviour
 {
-    // Ensemble des doigts actuellement posés sur CET objet
+    [Header("Debug")]
+    public bool debug = true;
+
     private readonly HashSet<int> _fingers = new();
 
-    [Tooltip("Événement émis quand le nombre de doigts change (valeur = count actuel).")]
+    [Tooltip("Ã‰vÃ©nement Ã©mis quand le nombre de doigts change (valeur = count actuel).")]
     public IntEvent OnFingerCountChanged = new();
 
     public int CurrentFingerCount => _fingers.Count;
 
-    /// <summary>Appelé par TouchManager quand un nouveau doigt touche cet objet.</summary>
     public void AddFinger(int fingerId)
     {
         if (_fingers.Add(fingerId))
         {
+            if (debug) Debug.Log($"[TouchInteractable:{name}] AddFinger {fingerId} â†’ count={_fingers.Count}");
             OnFingerCountChanged.Invoke(_fingers.Count);
+        }
+        else
+        {
+            if (debug) Debug.Log($"[TouchInteractable:{name}] AddFinger ignored (already present) id={fingerId} â†’ count={_fingers.Count}");
         }
     }
 
-    /// <summary>Appelé par TouchManager quand le doigt quitte l’écran/objet.</summary>
     public void RemoveFinger(int fingerId)
     {
         if (_fingers.Remove(fingerId))
         {
+            if (debug) Debug.Log($"[TouchInteractable:{name}] RemoveFinger {fingerId} â†’ count={_fingers.Count}");
             OnFingerCountChanged.Invoke(_fingers.Count);
+        }
+        else
+        {
+            if (debug) Debug.Log($"[TouchInteractable:{name}] RemoveFinger ignored (unknown) id={fingerId} â†’ count={_fingers.Count}");
         }
     }
 
-    /// <summary>Force la remise à zéro (utile si vous désactivez l’objet à chaud).</summary>
     public void ClearAllFingers()
     {
         if (_fingers.Count > 0)
         {
+            if (debug) Debug.Log($"[TouchInteractable:{name}] ClearAllFingers (had {_fingers.Count})");
             _fingers.Clear();
             OnFingerCountChanged.Invoke(0);
         }
+    }
+
+    private void OnEnable()
+    {
+        if (debug) Debug.Log($"[TouchInteractable:{name}] OnEnable â†’ count={_fingers.Count}");
+    }
+
+    private void OnDisable()
+    {
+        if (debug) Debug.Log($"[TouchInteractable:{name}] OnDisable");
     }
 }

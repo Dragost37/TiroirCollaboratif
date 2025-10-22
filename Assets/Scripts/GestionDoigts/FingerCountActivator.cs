@@ -1,86 +1,102 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 
 public class FingerCountActivator : MonoBehaviour
 {
-    public enum RuleMode
-    {
-        Equal,            // == N
-        AtLeast,          // >= N
-        AtMost,           // <= N
-        BetweenInclusive  // min <= N <= max
-    }
+    public enum RuleMode { Equal, AtLeast, AtMost, BetweenInclusive }
 
     [Header("Source")]
-    [Tooltip("Composant TouchInteractable à écouter (sur le même objet par défaut).")]
     public TouchInteractable interactable;
 
-    [Header("Règle d’activation")]
+    [Header("RÃ¨gle dâ€™activation")]
     public RuleMode ruleMode = RuleMode.AtLeast;
-    [Tooltip("Seuil principal (utilisé par Equal/AtLeast/AtMost et min pour Between).")]
     public int threshold = 1;
-    [Tooltip("Seuil max (utilisé seulement pour BetweenInclusive).")]
     public int thresholdMax = 2;
-
-    [Header("Cibles à activer/désactiver")]
-    [Tooltip("Scripts de logique à activer quand la règle est vraie, sinon désactiver.")]
-    public MonoBehaviour[] logicScripts;
-
-    [Tooltip("Objets ou scripts de feedback visuel à activer quand la règle est vraie, sinon désactiver.")]
-    public Behaviour[] visualScripts; // ex: ParticleSystem (en tant que Behaviour), LineRenderer, etc.
-    public GameObject[] visualObjects; // ex: halos, highlights, UI, etc.
-
-    [Header("Options")]
-    [Tooltip("Inverser le résultat (active quand la règle est FAUSSE).")]
     public bool invert;
+
+    [Header("Cibles Ã  activer/dÃ©sactiver")]
+    public MonoBehaviour[] logicScripts;
+    public Behaviour[] visualScripts;
+    public GameObject[] visualObjects;
+
+    [Header("Debug")]
+    public bool debug = true;
 
     private void Reset()
     {
         interactable = GetComponent<TouchInteractable>();
     }
 
-    private void Awake()
+    private void OnEnable()
     {
         if (interactable == null) interactable = GetComponent<TouchInteractable>();
+
         if (interactable != null)
         {
             interactable.OnFingerCountChanged.AddListener(OnFingerCountChanged);
+            if (debug) Debug.Log($"[FCA:{name}#{GetInstanceID()}] OnEnable â†’ subscribe to {interactable.name}, rule={DescribeRule()} invert={invert}");
+            // synchro immÃ©diate
+            OnFingerCountChanged(interactable.CurrentFingerCount);
+        }
+        else
+        {
+            if (debug) Debug.LogWarning($"[FCA:{name}] OnEnable â†’ NO TouchInteractable found. Forcing OFF.");
+            Apply(false, reason: "no-interactable");
         }
     }
 
-    private void OnEnable()
+    private void OnDisable()
     {
         if (interactable != null)
-            OnFingerCountChanged(interactable.CurrentFingerCount);
-    }
-
-    private void OnDestroy()
-    {
-        if (interactable != null)
+        {
             interactable.OnFingerCountChanged.RemoveListener(OnFingerCountChanged);
+            if (debug) Debug.Log($"[FCA:{name}#{GetInstanceID()}] OnDisable â†’ unsubscribed");
+        }
     }
 
     private void OnFingerCountChanged(int count)
     {
         bool pass = Evaluate(count);
-        if (invert) pass = !pass;
+        bool final = invert ? !pass : pass;
 
-        // Activer/Désactiver les cibles
+        if (debug)
+            Debug.Log($"[FCA:{name}#{GetInstanceID()}] CountChanged â†’ count={count} rule={DescribeRule()} pass={pass} invert={invert} => final={final}");
+
+        Apply(final, reason: $"count={count}");
+    }
+
+    private void Apply(bool state, string reason)
+    {
         if (logicScripts != null)
         {
             foreach (var mb in logicScripts)
-                if (mb != null) mb.enabled = pass;
+            {
+                if (!mb) continue;
+                if (mb.enabled != state && debug)
+                    Debug.Log($"[FCA:{name}#{GetInstanceID()}] Toggle LOGIC '{mb.GetType().Name}' on {mb.gameObject.name} â†’ {state} ({reason})");
+                mb.enabled = state;
+            }
         }
 
         if (visualScripts != null)
         {
             foreach (var beh in visualScripts)
-                if (beh != null) beh.enabled = pass;
+            {
+                if (!beh) continue;
+                if (beh.enabled != state && debug)
+                    Debug.Log($"[FCA:{name}#{GetInstanceID()}] Toggle VISUAL '{beh.GetType().Name}' on {beh.gameObject.name} â†’ {state} ({reason})");
+                beh.enabled = state;
+            }
         }
 
         if (visualObjects != null)
         {
             foreach (var go in visualObjects)
-                if (go != null) go.SetActive(pass);
+            {
+                if (!go) continue;
+                if (go.activeSelf != state && debug)
+                    Debug.Log($"[FCA:{name}#{GetInstanceID()}] Toggle GO '{go.name}' â†’ {state} ({reason})");
+                go.SetActive(state);
+            }
         }
     }
 
@@ -95,4 +111,23 @@ public class FingerCountActivator : MonoBehaviour
             default: return false;
         }
     }
+
+    private string DescribeRule()
+    {
+        return ruleMode switch
+        {
+            RuleMode.Equal => $"== {threshold}",
+            RuleMode.AtLeast => $">= {threshold}",
+            RuleMode.AtMost => $"<= {threshold}",
+            RuleMode.BetweenInclusive => $"{threshold} â‰¤ N â‰¤ {thresholdMax}",
+            _ => "?"
+        };
+    }
+
+    public void ForceSync()
+    {
+        int count = interactable ? interactable.CurrentFingerCount : 0;
+        OnFingerCountChanged(count);
+    }
+
 }
