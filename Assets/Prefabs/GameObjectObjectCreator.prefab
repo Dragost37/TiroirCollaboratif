@@ -44,5 +44,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2931aeb3198344666a1ead5b6f48cb36, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ObjectCreator
-  planeTransform: {fileID: 0}
+  planeTransform: {fileID: 2320320931711167928, guid: 73141d32814734e8198b1b30ef4ae759, type: 3}
   textureWidth: 1024
+  woodPrefab: {fileID: 3640516352309709322, guid: f0bac1c665ab2401dacad035d9350c6c, type: 3}
+  screwPrefab: {fileID: 5177111521025992170, guid: b901ae9fc2fc6439f9c434a9488c8f25, type: 3}
+  gameObjectScripts: {fileID: 8240041568434129777, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+  material: {fileID: 2100000, guid: 7156e268e37805d418febe9a51a751f0, type: 2}

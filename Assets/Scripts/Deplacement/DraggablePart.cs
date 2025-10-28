@@ -63,7 +63,6 @@ public class DraggablePart : MonoBehaviour
     private void OnTouchBegan(MultiTouchManager.TouchEvt e)
     {
         if (_dragging || _cam == null) return;
-        if (Input.touchCount > 1) return; // on évite les conflits à 2 doigts
 
         var ray = _cam.ScreenPointToRay(e.position);
         if (Physics.Raycast(ray, out var hit) && hit.collider && hit.collider.gameObject == gameObject)
