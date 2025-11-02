@@ -24,11 +24,6 @@ public class SnapPoint : MonoBehaviour
         var audio = GetComponent<AudioSource>();
         if (audio != null)
             audio.Play();
-
-        // notifie un gestionnaire global d’assemblage s’il existe
-        var asm = FindObjectOfType<AssemblyManager>();
-        if (asm != null)
-            asm.ValidateStep(partGO);
     }
 
     /// <summary>

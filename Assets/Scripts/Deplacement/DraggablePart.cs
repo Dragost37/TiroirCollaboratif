@@ -1,13 +1,9 @@
 using UnityEngine;
 
 [RequireComponent(typeof(Collider))]
+[RequireComponent(typeof(Rigidbody))]
 public class DraggablePart : MonoBehaviour
 {
-    [Header("Snap")]
-    public string compatibleSnapTag;
-    public float snapDistance = 2f;
-    public float snapAngle = 91f;
-
     [Header("Dessin")]
     public Behaviour drawingTool;
 
@@ -24,11 +20,21 @@ public class DraggablePart : MonoBehaviour
     private bool _hadRb;
     private bool _rbWasKinematic;
     private RigidbodyConstraints _rbSavedConstraints;
+    private Collider _collider;
+
+    public System.Action<DraggablePart> OnReleased; // vénement notifiant la fin du drag
 
     private void Awake()
     {
         _cam = Camera.main;
         _hadRb = TryGetComponent(out _rb);
+        _collider = GetComponent<Collider>();
+
+        if (_rb)
+        {
+            _rb.useGravity = false;
+            _rb.isKinematic = true;
+        }
     }
 
     private void OnEnable()
@@ -40,10 +46,6 @@ public class DraggablePart : MonoBehaviour
             mt.OnTouchMoved += OnTouchMoved;
             mt.OnTouchEnded += OnTouchEnded;
         }
-        else
-        {
-            Debug.LogWarning("[DraggablePart] MultiTouchManager.Instance est null.");
-        }
     }
 
     private void OnDisable()
@@ -52,10 +54,9 @@ public class DraggablePart : MonoBehaviour
         if (mt != null)
         {
             mt.OnTouchBegan -= OnTouchBegan;
-            mt.OnTouchMoved  -= OnTouchMoved;
-            mt.OnTouchEnded  -= OnTouchEnded;
+            mt.OnTouchMoved -= OnTouchMoved;
+            mt.OnTouchEnded -= OnTouchEnded;
         }
-
         if (drawingTool) drawingTool.enabled = true;
         RestoreRigidbody();
     }
@@ -82,10 +83,10 @@ public class DraggablePart : MonoBehaviour
             // neutraliser la physique pendant le drag
             if (_hadRb && _rb != null)
             {
-                _rbWasKinematic      = _rb.isKinematic;
-                _rbSavedConstraints  = _rb.constraints;
-                _rb.isKinematic      = true;         // la physique ne retouche plus la position
-                _rb.constraints      = RigidbodyConstraints.None;
+                _rbWasKinematic = _rb.isKinematic;
+                _rbSavedConstraints = _rb.constraints;
+                _rb.isKinematic = true;
+                _rb.constraints = RigidbodyConstraints.None;
             }
         }
     }
@@ -94,15 +95,11 @@ public class DraggablePart : MonoBehaviour
     {
         if (!_dragging || e.fingerId != _fingerId || _cam == null) return;
 
-        // Ray écran -> intersection avec le plan de drag
         var ray = _cam.ScreenPointToRay(e.position);
         if (_dragPlane.Raycast(ray, out var t))
         {
             var worldUnderFinger = ray.GetPoint(t);
-            var newPos = worldUnderFinger + _grabOffset;
-
-            // NOTE : on ne verrouille plus Z ; le plan garantit un mouvement XY écran
-            transform.position = newPos;
+            transform.position = worldUnderFinger + _grabOffset;
         }
     }
 
@@ -116,7 +113,7 @@ public class DraggablePart : MonoBehaviour
         if (drawingTool) drawingTool.enabled = true;
         RestoreRigidbody();
 
-        TrySnap();
+        OnReleased?.Invoke(this); // 👈 notifie les scripts abonnés
     }
 
     private void RestoreRigidbody()
@@ -128,67 +125,9 @@ public class DraggablePart : MonoBehaviour
         }
     }
 
-    private void TrySnap()
+    public void DisableDrag()
     {
-#if UNITY_2023_1_OR_NEWER
-        var snaps = Object.FindObjectsByType<SnapPoint>(FindObjectsSortMode.None);
-#else
-    var snaps = Object.FindObjectsOfType<SnapPoint>();
-#endif
-        SnapPoint best = null;
-        float bestDist = float.MaxValue;
-        Collider col = GetComponent<Collider>();
-
-        foreach (var sp in snaps)
-        {
-            if (!sp || sp.occupied) continue;
-            if (!string.Equals(sp.snapTag, compatibleSnapTag)) continue;
-
-            // Distance mesurée entre la surface de la pièce et le SnapPoint
-            Vector3 closestPoint = col.ClosestPoint(sp.transform.position);
-            float d = Vector3.Distance(closestPoint, sp.transform.position);
-
-            if (d < bestDist)
-            {
-                best = sp;
-                bestDist = d;
-            }
-        }
-
-        Debug.Log($"[DraggablePart] Meilleur snap trouvé : {(best != null ? best.name : "aucun")} à {bestDist} m. avec un angle de {Quaternion.Angle(transform.rotation, best != null ? best.transform.rotation : Quaternion.identity)}°.");
-
-        if (best != null && bestDist <= snapDistance)
-        {
-            float ang = Quaternion.Angle(transform.rotation, best.transform.rotation);
-            if (ang <= snapAngle)
-            {
-                // Coller la face la plus proche
-                Vector3 closestPoint = col.ClosestPoint(best.transform.position);
-                Vector3 offset = best.transform.position - closestPoint;
-                transform.position += offset;
-
-                // transform.rotation = best.transform.rotation;
-
-                // rattacher à la structure
-                transform.SetParent(best.transform.parent, true);
-                if (_hadRb && _rb != null)
-                {
-                    _rb.isKinematic = true;
-                    _rb.linearVelocity = Vector3.zero;
-                    _rb.angularVelocity = Vector3.zero;
-                    _rb.constraints = RigidbodyConstraints.FreezeAll;
-                }
-
-                foreach (var c in transform.GetComponentsInChildren<Collider>())
-                    foreach (var other in transform.parent.GetComponentsInChildren<Collider>())
-                        if (c != other)
-                            Physics.IgnoreCollision(c, other, true);
-
-                Debug.Log($"[DraggablePart] Pièce '{name}' accrochée au SnapPoint '{best.name}'.");
-
-                best.OnSnapped(gameObject);
-            }
-        }
+        if (_collider) _collider.enabled = false;
+        enabled = false;
     }
-
 }
