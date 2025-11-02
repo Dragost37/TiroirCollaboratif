@@ -23,8 +23,9 @@ public class ObjectCreator : MonoBehaviour
 
         GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
         cube.transform.position = worldPos + Vector3.up * 0.5f;
-        cube.transform.localScale = new Vector3(size * 0.01f, 0.1f, size * 0.01f);
+        cube.transform.localScale = new Vector3(size * 0.01f, 0.5f, size * 0.01f);
         cube.GetComponent<Renderer>().material = material;
+        cube.tag = "plank";
 
         // Ajouter les scripts communs si nécessaire
         CopyAllScripts(gameObjectScripts, cube);
@@ -44,8 +45,9 @@ public class ObjectCreator : MonoBehaviour
 
         GameObject rectangle = GameObject.CreatePrimitive(PrimitiveType.Cube);
         rectangle.transform.position = worldPos + Vector3.up * 0.5f;
-        rectangle.transform.localScale = new Vector3(width * 0.01f, 0.1f, height * 0.01f);
+        rectangle.transform.localScale = new Vector3(width * 0.01f, 0.5f, height * 0.01f);
         rectangle.GetComponent<Renderer>().material = material;
+        rectangle.tag = "plank";
 
         // Ajouter les scripts communs si nécessaire
         CopyAllScripts(gameObjectScripts, rectangle);
@@ -66,6 +68,8 @@ public class ObjectCreator : MonoBehaviour
         newScrew.transform.position = new Vector3(0, 0.5f, 0);
         newScrew.transform.rotation = Quaternion.Euler(90, 0, 0);
 
+        newScrew.tag = "screw";
+
         // Ajouter les scripts communs si nécessaire
         CopyAllScripts(gameObjectScripts, newScrew);
     }
@@ -84,6 +88,8 @@ public class ObjectCreator : MonoBehaviour
 
         newWood.transform.position = new Vector3(0, 0.5f, 0);
         newWood.transform.rotation = Quaternion.Euler(90, 0, 0);
+
+        newWood.tag = "wood";
 
         // Ajouter les scripts communs si nécessaire
         CopyAllScripts(gameObjectScripts, newWood);

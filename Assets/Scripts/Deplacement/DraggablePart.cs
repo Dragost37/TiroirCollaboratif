@@ -2,15 +2,11 @@ using System; // NEW: pour Func<int,bool>
 using UnityEngine;
 
 [RequireComponent(typeof(Collider))]
+[RequireComponent(typeof(Rigidbody))]
 public class DraggablePart : MonoBehaviour
 {
     // NEW — hook global : retourne true si le doigt doit être ignoré par DraggablePart
     public static Func<int, bool> ShouldSuppressFinger;
-
-    [Header("Snap")]
-    public string compatibleSnapTag;
-    public float snapDistance = 0.08f;
-    public float snapAngle = 15f;
 
     [Header("Dessin")]
     public Behaviour drawingTool;
@@ -28,11 +24,21 @@ public class DraggablePart : MonoBehaviour
     private bool _hadRb;
     private bool _rbWasKinematic;
     private RigidbodyConstraints _rbSavedConstraints;
+    private Collider _collider;
+
+    public System.Action<DraggablePart> OnReleased; // vénement notifiant la fin du drag
 
     private void Awake()
     {
         _cam = Camera.main;
         _hadRb = TryGetComponent(out _rb);
+        _collider = GetComponent<Collider>();
+
+        if (_rb)
+        {
+            _rb.useGravity = false;
+            _rb.isKinematic = true;
+        }
     }
 
     private void OnEnable()
@@ -44,10 +50,6 @@ public class DraggablePart : MonoBehaviour
             mt.OnTouchMoved += OnTouchMoved;
             mt.OnTouchEnded += OnTouchEnded;
         }
-        else
-        {
-            Debug.LogWarning("[DraggablePart] MultiTouchManager.Instance est null.");
-        }
     }
 
     private void OnDisable()
@@ -56,10 +58,9 @@ public class DraggablePart : MonoBehaviour
         if (mt != null)
         {
             mt.OnTouchBegan -= OnTouchBegan;
-            mt.OnTouchMoved  -= OnTouchMoved;
-            mt.OnTouchEnded  -= OnTouchEnded;
+            mt.OnTouchMoved -= OnTouchMoved;
+            mt.OnTouchEnded -= OnTouchEnded;
         }
-
         if (drawingTool) drawingTool.enabled = true;
         RestoreRigidbody();
     }
@@ -84,16 +85,16 @@ public class DraggablePart : MonoBehaviour
             var wp = hit.point;
             _grabOffset = transform.position - wp;
 
-            // plan de drag parallèle à l'écran, passant par la pièce
-            _dragPlane = new Plane(-_cam.transform.forward, transform.position);
+            // plan de drag parallèle à l'écran, passant par le point de contact
+            _dragPlane = new Plane(-_cam.transform.forward, hit.point);
 
             // neutraliser la physique pendant le drag
             if (_hadRb && _rb != null)
             {
-                _rbWasKinematic      = _rb.isKinematic;
-                _rbSavedConstraints  = _rb.constraints;
-                _rb.isKinematic      = true;         // la physique ne retouche plus la position
-                _rb.constraints      = RigidbodyConstraints.None;
+                _rbWasKinematic = _rb.isKinematic;
+                _rbSavedConstraints = _rb.constraints;
+                _rb.isKinematic = true;
+                _rb.constraints = RigidbodyConstraints.None;
             }
         }
     }
@@ -102,15 +103,11 @@ public class DraggablePart : MonoBehaviour
     {
         if (!_dragging || e.fingerId != _fingerId || _cam == null) return;
 
-        // Ray écran -> intersection avec le plan de drag
         var ray = _cam.ScreenPointToRay(e.position);
         if (_dragPlane.Raycast(ray, out var t))
         {
             var worldUnderFinger = ray.GetPoint(t);
-            var newPos = worldUnderFinger + _grabOffset;
-
-            // NOTE : on ne verrouille plus Z ; le plan garantit un mouvement XY écran
-            transform.position = newPos;
+            transform.position = worldUnderFinger + _grabOffset;
         }
     }
 
@@ -124,7 +121,7 @@ public class DraggablePart : MonoBehaviour
         if (drawingTool) drawingTool.enabled = true;
         RestoreRigidbody();
 
-        TrySnap();
+        OnReleased?.Invoke(this); // notifie les scripts abonnés
     }
 
     private void RestoreRigidbody()
@@ -136,38 +133,10 @@ public class DraggablePart : MonoBehaviour
         }
     }
 
-    private void TrySnap()
+    public void DisableDrag()
     {
-#if UNITY_2023_1_OR_NEWER
-        var snaps = UnityEngine.Object.FindObjectsByType<SnapPoint>(FindObjectsSortMode.None);
-#else
-        var snaps = UnityEngine.Object.FindObjectsOfType<SnapPoint>();
-#endif
-        SnapPoint best = null;
-        float bestDist = float.MaxValue;
-
-        foreach (var sp in snaps)
-        {
-            if (!sp || sp.occupied) continue;
-            if (!string.Equals(sp.snapTag, compatibleSnapTag)) continue;
-
-            float d = Vector3.Distance(transform.position, sp.transform.position);
-            if (d < bestDist)
-            {
-                best = sp;
-                bestDist = d;
-            }
-        }
-
-        if (best != null && bestDist <= snapDistance)
-        {
-            float ang = Quaternion.Angle(transform.rotation, best.transform.rotation);
-            if (ang <= snapAngle)
-            {
-                transform.position = best.transform.position;
-                transform.rotation = best.transform.rotation;
-                best.OnSnapped(gameObject);
-            }
-        }
+        if (_collider) _collider.enabled = false;
+        enabled = false;
+        Debug.Log($"[DraggablePart] Drag désactivé pour {gameObject.name}");
     }
 }
