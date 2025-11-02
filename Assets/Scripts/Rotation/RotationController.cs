@@ -18,6 +18,7 @@ public class RotationController : MonoBehaviour
 
     private Transform targetObject;
     private bool isUpdatingScaleSlider = false;
+    private Vector3 originalScale;
 
     public void SetTargetObject(Transform target)
     {
@@ -43,7 +44,7 @@ public class RotationController : MonoBehaviour
 
     private void InitializeScaleSlider()
     {
-
+        originalScale = targetObject.localScale;
         scaleSlider.minValue = minScale;
         scaleSlider.maxValue = maxScale;
         isUpdatingScaleSlider = true;
@@ -58,7 +59,9 @@ public class RotationController : MonoBehaviour
         {
             return;
         }
-        targetObject.localScale = new Vector3(newScale, newScale, newScale);
+
+        float scaleFactor = newScale / originalScale.x;
+        targetObject.localScale = originalScale * scaleFactor;
     }
 
     public void ClosePanel()
