@@ -25,7 +25,8 @@ public class RotationTrigger : MonoBehaviour, IPointerDownHandler, IPointerUpHan
 
     public void OnPointerDown(PointerEventData eventData)
     {
-        if (IsTwoFingerActive() && spawnedUI == null)
+        // Only start one long-press coroutine at a time and only if no UI is spawned yet
+        if (IsTwoFingerActive() && spawnedUI == null && longPressCoroutine == null)
         {
             longPressCoroutine = StartCoroutine(LongPressCheck());
         }
@@ -48,7 +49,7 @@ public class RotationTrigger : MonoBehaviour, IPointerDownHandler, IPointerUpHan
         {
             if (!IsTwoFingerActive())
             {
-
+                longPressCoroutine = null;
                 yield break;
             }
 
@@ -59,13 +60,38 @@ public class RotationTrigger : MonoBehaviour, IPointerDownHandler, IPointerUpHan
         if (IsTwoFingerActive())
         {
             Debug.Log("2-Finger Long Press Detected (or mouse-emulated)!");
-            SpawnRotationUI();
+            if (spawnedUI == null)
+            {
+                SpawnRotationUI();
+            }
+            else
+            {
+                Debug.Log("Rotation UI already spawned — skipping duplicate.");
+            }
         }
+
+        longPressCoroutine = null;
     }
 
     private bool IsTwoFingerActive()
     {
-        if (Input.touchCount == 2) return true;
+        if (Input.touchCount >= 2)
+        {
+            int concurrentTouchesOnObject = 0;
+            for (int i = 0; i < Input.touchCount; i++)
+            {
+                Touch t = Input.GetTouch(i);
+                if (t.phase == TouchPhase.Ended || t.phase == TouchPhase.Canceled)
+                    continue;
+
+                if (IsTouchOverGameObject(t))
+                    concurrentTouchesOnObject++;
+            }
+
+            if (concurrentTouchesOnObject == 2)
+                return true;
+        }
+
         if (!enableMouseEmulation) return false;
         if (requireBothMouseButtons)
         {
@@ -77,6 +103,36 @@ public class RotationTrigger : MonoBehaviour, IPointerDownHandler, IPointerUpHan
             if (Input.GetMouseButton(0) && (Input.GetKey(mouseEmulationModifier)))
                 return true;
         }
+        return false;
+    }
+
+    private bool IsTouchOverGameObject(Touch touch)
+    {
+        if (EventSystem.current != null)
+        {
+            PointerEventData pointerData = new PointerEventData(EventSystem.current);
+            pointerData.position = touch.position;
+            var results = new System.Collections.Generic.List<RaycastResult>();
+            EventSystem.current.RaycastAll(pointerData, results);
+            foreach (var r in results)
+            {
+                if (r.gameObject == this.gameObject || r.gameObject.transform.IsChildOf(this.transform))
+                    return true;
+            }
+        }
+
+        Camera cam = Camera.main;
+        if (cam != null)
+        {
+            Ray ray = cam.ScreenPointToRay(touch.position);
+            RaycastHit hit;
+            if (Physics.Raycast(ray, out hit))
+            {
+                if (hit.transform == this.transform || hit.transform.IsChildOf(this.transform))
+                    return true;
+            }
+        }
+
         return false;
     }
 

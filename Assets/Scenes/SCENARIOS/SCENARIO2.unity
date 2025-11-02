@@ -857,6 +857,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e7606921c47d54a44ae2b187c24b7c62, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MultiTouchManager
+  axisDetectionThreshold: 10
+  enableAxisLocking: 1
 --- !u!4 &1076862493
 Transform:
   m_ObjectHideFlags: 0
@@ -1543,8 +1545,32 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 4006568864974192685, guid: 55fe885ab3de04d81b1eb24bf59ad231, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1874146710}
   m_SourcePrefab: {fileID: 100100000, guid: 55fe885ab3de04d81b1eb24bf59ad231, type: 3}
+--- !u!1 &1874146709 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 4006568864974192685, guid: 55fe885ab3de04d81b1eb24bf59ad231, type: 3}
+  m_PrefabInstance: {fileID: 1874146708}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1874146710
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1874146709}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c49b4cc203aa6414fae5c798d1d0e7d6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.EventSystems.PhysicsRaycaster
+  m_EventMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_MaxRayIntersections: 0
 --- !u!1001 &1894296885
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1673,10 +1699,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.CanvasScaler
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 800, y: 600}
+  m_ReferenceResolution: {x: 1920, y: 1080}
   m_ScreenMatchMode: 0
   m_MatchWidthOrHeight: 0
   m_PhysicalUnit: 3
@@ -1717,6 +1743,10 @@ PrefabInstance:
       value: 0.02
       objectReference: {fileID: 0}
     - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: drawingTool
       value: 
       objectReference: {fileID: 121562905}
@@ -1743,6 +1773,10 @@ PrefabInstance:
     - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: captureRadiusFactor
       value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 7182053776104015651, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      propertyPath: m_Enabled
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7182053776104015651, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: drawingTool
@@ -1807,7 +1841,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 8240041568434129777, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      insertIndex: 3
+      addedObject: {fileID: 2141867806}
   m_SourcePrefab: {fileID: 100100000, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
 --- !u!1 &2141867804 stripped
 GameObject:
@@ -1819,6 +1856,23 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 7252074122777733509, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
   m_PrefabInstance: {fileID: 2141867803}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &2141867806
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2141867804}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 67f6a2f6dc49dd447b62e5967c2c9218, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RotationTrigger
+  rotationUIPrefab: {fileID: 1856495045299948984, guid: 38765e5417b6cc94a90e062c10d850f5, type: 3}
+  longPressDuration: 1.5
+  enableMouseEmulation: 1
+  requireBothMouseButtons: 1
+  mouseEmulationModifier: 304
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
