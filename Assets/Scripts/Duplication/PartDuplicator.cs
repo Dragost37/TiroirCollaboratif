@@ -1,3 +1,4 @@
+using System; // <- pour Func<>
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -34,6 +35,21 @@ public class PartDuplicator : MonoBehaviour
     [Header("Intégration dessin")]
     [Tooltip("Composant de dessin à désactiver pendant la duplication (ex: LineDrawer, Painter, etc.).")]
     public Behaviour drawingTool;
+
+    // ---------- NOUVEAU : Changement d'axe en cours de geste ----------
+    [Header("Changement d'axe en cours de geste")]
+    [Tooltip("Autoriser le changement d'axe pendant le mouvement.")]
+    public bool allowAxisSwitching = true;
+
+    [Tooltip("Distance minimale parcourue avant une (ré)évaluation.")]
+    public float axisSwitchMinMove = 0.02f;
+
+    [Tooltip("Adhérence à l'axe courant (1 = très collant, 0.5 ≈ 60°). Le switch se fait si le nouvel axe dépasse ce seuil ET aligne mieux le mouvement.")]
+    [Range(0.5f, 0.99f)] public float axisStickiness = 0.85f;
+
+    [Tooltip("Anti-flutter : délai min entre deux bascules (secondes).")]
+    public float axisSwitchCooldown = 0.07f;
+    // -------------------------------------------------------------------
 
     // ---------- DEBUG VISU DE LA BULLE ----------
     [Header("Debug capture bubble")]
@@ -112,10 +128,21 @@ public class PartDuplicator : MonoBehaviour
     // Source runtime
     private GameObject _runtimeSource;
 
+    // NEW: mémorisation des états initiaux
+    private bool _dragWasEnabled;           // NEW
+    private bool _drawingToolWasEnabled;    // NEW
+
+    // NOUVEAU : anti-flutter pour bascules répétées
+    private float _lastAxisSwitchTime = -999f;
+
     private void Awake()
     {
         _cam  = Camera.main;
         _drag = GetComponent<DraggablePart>();
+
+        // NEW: capture l'état actuel comme valeur de repli (si OnDisable survient sans geste)
+        _dragWasEnabled        = _drag ? _drag.enabled : false;
+        _drawingToolWasEnabled = drawingTool ? drawingTool.enabled : false;
     }
 
     private void Update()
@@ -151,8 +178,10 @@ public class PartDuplicator : MonoBehaviour
         }
 
         // Sécurités locale et globale
-        if (_drag) _drag.enabled = true;
-        if (drawingTool) drawingTool.enabled = true;
+        // NEW: restaurer l'état précédent, ne pas forcer à true
+        if (_drag)       _drag.enabled       = _dragWasEnabled;        // NEW
+        if (drawingTool) drawingTool.enabled = _drawingToolWasEnabled; // NEW
+
         ReleaseAllFor(this);
         ResetState();
     }
@@ -180,9 +209,17 @@ public class PartDuplicator : MonoBehaviour
                 // Source runtime
                 _runtimeSource = autoUseSelfAsSourceOnSelect ? gameObject : (prefab ? prefab : gameObject);
 
-                // Désactiver le drag & le dessin localement pendant le trait
-                if (_drag) _drag.enabled = false;
-                if (drawingTool) drawingTool.enabled = false;
+                // NEW: mémoriser l'état courant puis désactiver
+                if (_drag)
+                {
+                    _dragWasEnabled = _drag.enabled;  // NEW
+                    _drag.enabled   = false;          // NEW (inchangé sur le fond)
+                }
+                if (drawingTool)
+                {
+                    _drawingToolWasEnabled = drawingTool.enabled; // NEW
+                    drawingTool.enabled    = false;               // NEW
+                }
 
                 _downTime = Time.time;
                 _armed    = false;
@@ -232,37 +269,22 @@ public class PartDuplicator : MonoBehaviour
         var delta = currW - _startW;
         var dist  = delta.magnitude;
 
-        if (!_axisChosen)
+        // --- (Ré)évaluation de l'axe (inclut le switch en cours de geste) ---
+        System.Func<Vector3, float> stepFunc = (Vector3 dir) =>
         {
-            if (dist < axisPickMinMove) return;
+            float s = ComputeModelLengthAlong(dir.normalized) + separationMargin;
+            if (spacingOverride > 0f) s = spacingOverride + separationMargin;
+            return Mathf.Max(s, 0.0001f);
+        };
 
-            if (axisFrame == AxisFrame.ScreenXY)
-            {
-                var right = _cam.transform.right;
-                var up    = _cam.transform.up;
-                float dr = Mathf.Abs(Vector3.Dot(delta.normalized, right));
-                float du = Mathf.Abs(Vector3.Dot(delta.normalized, up));
-                _axisDir = (dr >= du)
-                    ? Mathf.Sign(Vector3.Dot(delta, right)) * right
-                    : Mathf.Sign(Vector3.Dot(delta, up))    * up;
-            }
-            else // WorldXY
-            {
-                var right = Vector3.right;
-                var up    = Vector3.up;
-                float dr = Mathf.Abs(Vector3.Dot(delta.normalized, right));
-                float du = Mathf.Abs(Vector3.Dot(delta.normalized, up));
-                _axisDir = (dr >= du)
-                    ? Mathf.Sign(Vector3.Dot(delta, right)) * right
-                    : Mathf.Sign(Vector3.Dot(delta, up))    * up;
-            }
+        bool pickedOrSwitched = TryPickOrSwitchAxis(
+            delta, dist, currW,
+            ref _axisChosen, ref _axisDir, ref _step,
+            stepFunc,
+            maxPerStroke, ref _nextIndex, _originW
+        );
 
-            _step = ComputeModelLengthAlong(_axisDir.normalized) + separationMargin;
-            if (spacingOverride > 0f) _step = spacingOverride + separationMargin;
-            _step = Mathf.Max(_step, 0.0001f);
-
-            _axisChosen = true;
-        }
+        if (!_axisChosen) return; // pas encore assez de mouvement pour trancher
 
         // --- Mise à jour de la bulle dynamique pour la visualisation ---
         if (showCaptureDebug)
@@ -395,8 +417,9 @@ public class PartDuplicator : MonoBehaviour
 
     private void FinishDuplication()
     {
-        if (_drag)       _drag.enabled = true;
-        if (drawingTool) drawingTool.enabled = true;
+        // NEW: restaurer au lieu de forcer à true
+        if (_drag)       _drag.enabled       = _dragWasEnabled;        // NEW
+        if (drawingTool) drawingTool.enabled = _drawingToolWasEnabled; // NEW
 
         // on libère les doigts capturés (ceux réellement détenus)
         foreach (var id in _captured)
@@ -420,15 +443,15 @@ public class PartDuplicator : MonoBehaviour
         // Réinitialisation debug
         _currentDynamicCenterW = _captureCenterW;
         _currentDynamicRadiusW = _captureRadiusW;
+
+        // NOTE: on NE touche PAS à _dragWasEnabled / _drawingToolWasEnabled ici.
     }
 
     // --------------- DESSIN DES BULLES (Scene view) ---------------
-    // OnDrawGizmos : s'affiche dès que showCaptureDebug est vrai (en Play ou en Éditeur).
     private void OnDrawGizmos()
     {
         if (!showCaptureDebug) return;
 
-        // Si on joue, on utilise les valeurs calculées ; sinon on recalcule vite fait depuis les renderers.
         Vector3 centerBase;
         float   radiusBase;
 
@@ -439,7 +462,6 @@ public class PartDuplicator : MonoBehaviour
         }
         else
         {
-            // estimation à l'édition
             var rends = GetComponentsInChildren<Renderer>();
             if (rends.Length == 0)
             {
@@ -455,13 +477,11 @@ public class PartDuplicator : MonoBehaviour
             }
         }
 
-        // Bulle de base
         Gizmos.color = captureBubbleColor;
         Gizmos.DrawWireSphere(centerBase, Mathf.Max(radiusBase, 0.0001f));
         Gizmos.color = new Color(captureBubbleColor.r, captureBubbleColor.g, captureBubbleColor.b, captureBubbleColor.a * 0.6f);
         Gizmos.DrawSphere(centerBase, Mathf.Max(radiusBase, 0.0001f));
 
-        // Bulle dynamique (si activée)
         float dynRadius = Application.isPlaying ? Mathf.Max(_currentDynamicRadiusW, radiusBase) : radiusBase;
         Vector3 dynCenter = Application.isPlaying ? _currentDynamicCenterW : centerBase;
 
@@ -472,5 +492,69 @@ public class PartDuplicator : MonoBehaviour
             Gizmos.color = new Color(dynamicBubbleColor.r, dynamicBubbleColor.g, dynamicBubbleColor.b, dynamicBubbleColor.a * 0.6f);
             Gizmos.DrawSphere(dynCenter, Mathf.Max(dynRadius, 0.0001f));
         }
+    }
+
+    // ----------- Helper local : (re)choix et switch d'axe avec hystérésis -----------
+    private bool TryPickOrSwitchAxis(
+        Vector3 delta, float dist, Vector3 currWorldPos,
+        ref bool axisChosen, ref Vector3 axisDir, ref float step,
+        Func<Vector3, float> computeStep,
+        int maxPerStroke, ref int nextIndex, Vector3 originW)
+    {
+        // Assez de déplacement ? (prend le max entre le seuil initial et le seuil de réévaluation)
+        float minMove = Mathf.Max(axisPickMinMove, axisSwitchMinMove);
+        if (dist < minMove) return false;
+
+        // Candidats (droite/haut en Screen ou World)
+        Vector3 right, up;
+        if (axisFrame == AxisFrame.ScreenXY && _cam != null)
+        {
+            right = _cam.transform.right;
+            up    = _cam.transform.up;
+        }
+        else
+        {
+            right = Vector3.right;
+            up    = Vector3.up;
+        }
+
+        Vector3 nd = delta.normalized;
+        float dr = Mathf.Abs(Vector3.Dot(nd, right));
+        float du = Mathf.Abs(Vector3.Dot(nd, up));
+        Vector3 cand = (dr >= du)
+            ? Mathf.Sign(Vector3.Dot(delta, right)) * right
+            : Mathf.Sign(Vector3.Dot(delta, up))    * up;
+
+        if (!axisChosen)
+        {
+            axisDir = cand;
+            step    = Mathf.Max(computeStep(axisDir), 0.0001f);
+            axisChosen = true;
+            _lastAxisSwitchTime = Time.time;
+            return true;
+        }
+
+        if (!allowAxisSwitching) return false;
+        if (Time.time - _lastAxisSwitchTime < axisSwitchCooldown) return false;
+
+        float currAlign  = Mathf.Abs(Vector3.Dot(nd, axisDir.normalized));
+        float candAlign  = Mathf.Abs(Vector3.Dot(nd, cand.normalized));
+
+        // Switch si candidat suffisamment aligné ET meilleur que l'actuel
+        if (candAlign >= axisStickiness && candAlign > currAlign)
+        {
+            axisDir = cand;
+            step    = Mathf.Max(computeStep(axisDir), 0.0001f);
+            _lastAxisSwitchTime = Time.time;
+
+            // Recalibrer le cran cible sur le NOUVEL axe (cohérent avec la position courante)
+            float signed = Vector3.Dot((currWorldPos - originW), axisDir.normalized);
+            int idx = Mathf.FloorToInt(signed / step) + 1;
+            nextIndex = Mathf.Clamp(idx, 1, maxPerStroke);
+
+            return true;
+        }
+
+        return false;
     }
 }

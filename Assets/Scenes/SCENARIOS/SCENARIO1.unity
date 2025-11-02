@@ -857,6 +857,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e7606921c47d54a44ae2b187c24b7c62, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MultiTouchManager
+  axisDetectionThreshold: 10
+  enableAxisLocking: 1
 --- !u!4 &1076862493
 Transform:
   m_ObjectHideFlags: 0
@@ -1543,7 +1545,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 4006568864974192685, guid: 55fe885ab3de04d81b1eb24bf59ad231, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1941819820}
   m_SourcePrefab: {fileID: 100100000, guid: 55fe885ab3de04d81b1eb24bf59ad231, type: 3}
 --- !u!1001 &1894296885
 PrefabInstance:
@@ -1704,6 +1709,27 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0, y: 0}
+--- !u!1 &1941819816 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 4006568864974192685, guid: 55fe885ab3de04d81b1eb24bf59ad231, type: 3}
+  m_PrefabInstance: {fileID: 1874146708}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1941819820
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1941819816}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c49b4cc203aa6414fae5c798d1d0e7d6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.EventSystems.PhysicsRaycaster
+  m_EventMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_MaxRayIntersections: 0
 --- !u!1001 &2141867803
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1725,6 +1751,10 @@ PrefabInstance:
       value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      propertyPath: axisPickMinMove
+      value: 0.1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: requiredFingers
       value: 2
       objectReference: {fileID: 0}
@@ -1734,7 +1764,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: showCaptureDebug
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: useDynamicCapture
@@ -1743,6 +1773,10 @@ PrefabInstance:
     - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: captureRadiusFactor
       value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 7182053776104015651, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      propertyPath: m_Enabled
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7182053776104015651, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: drawingTool
@@ -1807,7 +1841,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 8240041568434129777, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2141867810}
   m_SourcePrefab: {fileID: 100100000, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
 --- !u!1 &2141867804 stripped
 GameObject:
@@ -1819,6 +1856,40 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 7252074122777733509, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
   m_PrefabInstance: {fileID: 2141867803}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &2141867810
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2141867804}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f0fd24c64f3c2c844a8b1cc3e5750925, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DuplicationGhostPreview
+  markerPrefab: {fileID: 6468304929702755509, guid: c4e0056b69b917148a3c1b0d02c95504, type: 3}
+  markerMaterial: {fileID: 0}
+  markerColor: {r: 1, g: 0.35, b: 0, a: 0.35}
+  markerScale: {x: 1, y: 1, z: 1}
+  alignMarkerToAxis: 1
+  stretchMarkerAlongAxis: 1
+  markerLength: 1
+  markerLayer: -1
+  showDirectionLine: 1
+  lineWidth: 1
+  useLocalGestureOverrides: 1
+  holdTimeOverride: 0
+  axisPickMinMoveOverride: 0.1
+  fixedGhostDistance: 0
+  allowAxisSwitching: 1
+  axisSwitchMinMove: 0.02
+  axisStickiness: 0.85
+  axisSwitchCooldown: 0.07
+  debugAlwaysVisibleWhileTracking: 1
+  debugShowBeforeAxisChosen: 1
+  debugIgnoreHoldTime: 1
+  debugLogs: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
