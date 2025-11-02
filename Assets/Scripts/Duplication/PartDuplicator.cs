@@ -35,6 +35,20 @@ public class PartDuplicator : MonoBehaviour
     [Tooltip("Composant de dessin à désactiver pendant la duplication (ex: LineDrawer, Painter, etc.).")]
     public Behaviour drawingTool;
 
+    // ---------- DEBUG VISU DE LA BULLE ----------
+    [Header("Debug capture bubble")]
+    [Tooltip("Afficher la bulle de capture (statique et dynamique).")]
+    public bool showCaptureDebug = false;
+
+    [Tooltip("Touche pour activer/désactiver la visualisation en runtime (None = désactivé).")]
+    public KeyCode debugToggleKey = KeyCode.F9;
+
+    [Tooltip("Couleur de la bulle de base (statique).")]
+    public Color captureBubbleColor = new Color(0f, 1f, 1f, 0.25f);
+
+    [Tooltip("Couleur de la bulle dynamique (base + along + slack).")]
+    public Color dynamicBubbleColor = new Color(1f, 0.5f, 0f, 0.25f);
+
     private Camera _cam;
 
     // ---- Ownership global des doigts (un doigt -> un duplicateur) ----
@@ -87,9 +101,13 @@ public class PartDuplicator : MonoBehaviour
 
     private DraggablePart _drag;
 
-    // Capture bubble
+    // Capture bubble (base)
     private Vector3 _captureCenterW;
     private float   _captureRadiusW;
+
+    // ---- DEBUG: valeurs courantes dynamiques (pour le dessin) ----
+    private Vector3 _currentDynamicCenterW;
+    private float   _currentDynamicRadiusW;
 
     // Source runtime
     private GameObject _runtimeSource;
@@ -98,6 +116,13 @@ public class PartDuplicator : MonoBehaviour
     {
         _cam  = Camera.main;
         _drag = GetComponent<DraggablePart>();
+    }
+
+    private void Update()
+    {
+        // Toggle runtime de la visualisation si souhaité
+        if (debugToggleKey != KeyCode.None && Input.GetKeyDown(debugToggleKey))
+            showCaptureDebug = !showCaptureDebug;
     }
 
     private void OnEnable()
@@ -170,8 +195,12 @@ public class PartDuplicator : MonoBehaviour
                 _startW  = ScreenToWorldOnPlane(GetCapturedCentroid(), _plane);
                 _originW = transform.position;
 
-                // Bulle de capture
+                // Bulle de capture (base)
                 ComputeCaptureBubble(out _captureCenterW, out _captureRadiusW);
+
+                // Initialiser la bulle dynamique pour la visu
+                _currentDynamicCenterW = _captureCenterW;
+                _currentDynamicRadiusW = _captureRadiusW;
 
                 _axisChosen     = false;
                 _nextIndex      = 1;
@@ -233,6 +262,18 @@ public class PartDuplicator : MonoBehaviour
             _step = Mathf.Max(_step, 0.0001f);
 
             _axisChosen = true;
+        }
+
+        // --- Mise à jour de la bulle dynamique pour la visualisation ---
+        if (showCaptureDebug)
+        {
+            float along = 0f;
+            if (useDynamicCapture && _axisChosen)
+            {
+                along = Mathf.Abs(Vector3.Dot(currW - _originW, _axisDir.normalized));
+            }
+            _currentDynamicCenterW = _captureCenterW;
+            _currentDynamicRadiusW = _captureRadiusW + along + (useDynamicCapture ? dynamicCaptureSlack : 0f);
         }
 
         float signed     = Vector3.Dot(currW - _originW, _axisDir.normalized);
@@ -375,5 +416,61 @@ public class PartDuplicator : MonoBehaviour
         _spawned = 0;
         _lastSpawnTime = -999f;
         _ownedFingers.Clear();
+
+        // Réinitialisation debug
+        _currentDynamicCenterW = _captureCenterW;
+        _currentDynamicRadiusW = _captureRadiusW;
+    }
+
+    // --------------- DESSIN DES BULLES (Scene view) ---------------
+    // OnDrawGizmos : s'affiche dès que showCaptureDebug est vrai (en Play ou en Éditeur).
+    private void OnDrawGizmos()
+    {
+        if (!showCaptureDebug) return;
+
+        // Si on joue, on utilise les valeurs calculées ; sinon on recalcule vite fait depuis les renderers.
+        Vector3 centerBase;
+        float   radiusBase;
+
+        if (Application.isPlaying)
+        {
+            centerBase = _captureCenterW != Vector3.zero ? _captureCenterW : transform.position;
+            radiusBase = (_captureRadiusW > 0f) ? _captureRadiusW : 0.1f;
+        }
+        else
+        {
+            // estimation à l'édition
+            var rends = GetComponentsInChildren<Renderer>();
+            if (rends.Length == 0)
+            {
+                centerBase = transform.position;
+                radiusBase = 0.1f * captureRadiusFactor;
+            }
+            else
+            {
+                var b = rends[0].bounds;
+                for (int i = 1; i < rends.Length; i++) b.Encapsulate(rends[i].bounds);
+                centerBase = b.center;
+                radiusBase = b.extents.magnitude * captureRadiusFactor;
+            }
+        }
+
+        // Bulle de base
+        Gizmos.color = captureBubbleColor;
+        Gizmos.DrawWireSphere(centerBase, Mathf.Max(radiusBase, 0.0001f));
+        Gizmos.color = new Color(captureBubbleColor.r, captureBubbleColor.g, captureBubbleColor.b, captureBubbleColor.a * 0.6f);
+        Gizmos.DrawSphere(centerBase, Mathf.Max(radiusBase, 0.0001f));
+
+        // Bulle dynamique (si activée)
+        float dynRadius = Application.isPlaying ? Mathf.Max(_currentDynamicRadiusW, radiusBase) : radiusBase;
+        Vector3 dynCenter = Application.isPlaying ? _currentDynamicCenterW : centerBase;
+
+        if (useDynamicCapture)
+        {
+            Gizmos.color = dynamicBubbleColor;
+            Gizmos.DrawWireSphere(dynCenter, Mathf.Max(dynRadius, 0.0001f));
+            Gizmos.color = new Color(dynamicBubbleColor.r, dynamicBubbleColor.g, dynamicBubbleColor.b, dynamicBubbleColor.a * 0.6f);
+            Gizmos.DrawSphere(dynCenter, Mathf.Max(dynRadius, 0.0001f));
+        }
     }
 }
