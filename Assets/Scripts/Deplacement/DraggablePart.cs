@@ -1,9 +1,13 @@
+using System; // NEW: pour Func<int,bool>
 using UnityEngine;
 
 [RequireComponent(typeof(Collider))]
 [RequireComponent(typeof(Rigidbody))]
 public class DraggablePart : MonoBehaviour
 {
+    // NEW — hook global : retourne true si le doigt doit être ignoré par DraggablePart
+    public static Func<int, bool> ShouldSuppressFinger;
+
     [Header("Dessin")]
     public Behaviour drawingTool;
 
@@ -63,6 +67,10 @@ public class DraggablePart : MonoBehaviour
 
     private void OnTouchBegan(MultiTouchManager.TouchEvt e)
     {
+        // NEW — neutralisation des doigts réservés (ex: par PartDuplicator)
+        if (ShouldSuppressFinger != null && ShouldSuppressFinger(e.fingerId))
+            return;
+
         if (_dragging || _cam == null) return;
 
         var ray = _cam.ScreenPointToRay(e.position);

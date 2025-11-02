@@ -857,6 +857,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e7606921c47d54a44ae2b187c24b7c62, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MultiTouchManager
+  axisDetectionThreshold: 10
+  enableAxisLocking: 1
 --- !u!4 &1076862493
 Transform:
   m_ObjectHideFlags: 0
@@ -1543,8 +1545,32 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 4006568864974192685, guid: 55fe885ab3de04d81b1eb24bf59ad231, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1874146710}
   m_SourcePrefab: {fileID: 100100000, guid: 55fe885ab3de04d81b1eb24bf59ad231, type: 3}
+--- !u!1 &1874146709 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 4006568864974192685, guid: 55fe885ab3de04d81b1eb24bf59ad231, type: 3}
+  m_PrefabInstance: {fileID: 1874146708}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1874146710
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1874146709}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c49b4cc203aa6414fae5c798d1d0e7d6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.EventSystems.PhysicsRaycaster
+  m_EventMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_MaxRayIntersections: 0
 --- !u!1001 &1894296885
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1673,10 +1699,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.CanvasScaler
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 800, y: 600}
+  m_ReferenceResolution: {x: 1920, y: 1080}
   m_ScreenMatchMode: 0
   m_MatchWidthOrHeight: 0
   m_PhysicalUnit: 3
@@ -1713,20 +1739,44 @@ PrefabInstance:
     m_TransformParent: {fileID: 488728004}
     m_Modifications:
     - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      propertyPath: holdTime
+      value: 0.02
+      objectReference: {fileID: 0}
+    - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: drawingTool
       value: 
       objectReference: {fileID: 121562905}
     - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      propertyPath: maxPerStroke
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: requiredFingers
-      value: 4
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: separationMargin
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      propertyPath: showCaptureDebug
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: useDynamicCapture
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      propertyPath: captureRadiusFactor
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 7182053776104015651, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      propertyPath: m_Enabled
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7182053776104015651, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: drawingTool
@@ -1793,10 +1843,7 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 8240041568434129777, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 2141867807}
-    - targetCorrespondingSourceObject: {fileID: 8240041568434129777, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
-      insertIndex: -1
+      insertIndex: 3
       addedObject: {fileID: 2141867806}
   m_SourcePrefab: {fileID: 100100000, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
 --- !u!1 &2141867804 stripped
@@ -1818,78 +1865,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 2141867804}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d430e794b175e3a5c82902e71888b97f, type: 3}
+  m_Script: {fileID: 11500000, guid: 67f6a2f6dc49dd447b62e5967c2c9218, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::resetToOriPos
-  inactivityTimeout: 2
-  resetDuration: 1
-  smoothReset: 1
-  resetCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
---- !u!114 &2141867807
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2141867804}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e28adf1695ecea06898cd53a1e4f1432, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::MultiFingerCircleRotate
-  Target: {fileID: 2141867805}
-  autoAssignIfNull: 1
-  autoAssignOnSelect: 1
-  useRootAsTarget: 0
-  RequireExactlyTwoFingers: 1
-  Sensitivity: 3
-  UseWorldSpace: 1
-  RotateX: 1
-  RotateY: 1
-  RotateZ: 1
-  PivotDetectFrames: 2
-  PivotJitterPx: 2
-  UseFirstFingerAsPivot: 1
-  AxisLockThresholdPx: 2
-  AxisUnlockHysteresis: 0.2
-  TwistThresholdDeg: 1.5
-  TwistYawGain: 0.6
-  SmoothFactor: 0.35
-  DeadZonePx: 2
-  MaxDegPerFrame: 10
-  AdaptiveGain: 1
-  GainPerMeter: 0.15
-  ClampPitch: 1
-  PitchMinDeg: -80
-  PitchMaxDeg: 80
-  MinRadiusPixels: 10
-  SimulateWithMouse: 0
-  drawingToolsToDisable:
-  - {fileID: 121562905}
-  ShowOverlay: 0
+  m_EditorClassIdentifier: Assembly-CSharp::RotationTrigger
+  rotationUIPrefab: {fileID: 1856495045299948984, guid: 38765e5417b6cc94a90e062c10d850f5, type: 3}
+  longPressDuration: 1.5
+  enableMouseEmulation: 1
+  requireBothMouseButtons: 1
+  mouseEmulationModifier: 304
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
