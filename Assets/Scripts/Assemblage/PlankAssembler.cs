@@ -55,6 +55,7 @@ public class PlankAssembler : MonoBehaviour
         if (best != null && bestDist <= snapDistance && best.transform.parent != transform)
         {
             float ang = Quaternion.Angle(transform.rotation, best.transform.rotation);
+            Debug.Log($"[PlankAssembler] Meilleur snap trouvé à distance {bestDist:F2} et angle {ang:F2}");
             if (ang <= snapAngle)
             {
                 Vector3 closestPoint = col.ClosestPoint(best.transform.position);
@@ -68,6 +69,13 @@ public class PlankAssembler : MonoBehaviour
                     rb.isKinematic = true;
                     rb.constraints = RigidbodyConstraints.FreezeAll;
                 }
+
+                RotationTrigger rotation = GetComponent<RotationTrigger>();
+                if (rotation)
+                    rotation.enabled = false;
+                RotationTrigger parentRotation = transform.parent.GetComponent<RotationTrigger>();
+                if (parentRotation)
+                    parentRotation.enabled = false;
 
                 foreach (var c in transform.GetComponentsInChildren<Collider>())
                     foreach (var other in transform.parent.GetComponentsInChildren<Collider>())

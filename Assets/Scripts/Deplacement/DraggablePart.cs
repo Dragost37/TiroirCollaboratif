@@ -121,7 +121,7 @@ public class DraggablePart : MonoBehaviour
         if (drawingTool) drawingTool.enabled = true;
         RestoreRigidbody();
 
-        OnReleased?.Invoke(this); // 👈 notifie les scripts abonnés
+        OnReleased?.Invoke(this); // notifie les scripts abonnés
     }
 
     private void RestoreRigidbody()
@@ -137,5 +137,6 @@ public class DraggablePart : MonoBehaviour
     {
         if (_collider) _collider.enabled = false;
         enabled = false;
+        Debug.Log($"[DraggablePart] Drag désactivé pour {gameObject.name}");
     }
 }
