@@ -68,4 +68,12 @@ public class GameManager : MonoBehaviour
         Debug.Log("Resetting game.");
         StartMinigame();
     }
+
+    // Called when a player fails (exceeds torque limit)
+    public void RestartGame()
+    {
+        Debug.Log("Game restarted due to player failure.");
+        StopAllCoroutines();
+        StartMinigame();
+    }
 }

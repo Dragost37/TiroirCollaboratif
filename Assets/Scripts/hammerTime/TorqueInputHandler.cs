@@ -78,8 +78,22 @@ public class TorqueInputHandler : MonoBehaviour
         if (angle < -0.1f)
         {
             float angleMagnitude = Mathf.Abs(angle);
-            currentTorque += angleMagnitude * torquePerDegree;
-            screwVisual.transform.Rotate(0, 0, angle);
+            float torqueToAdd = angleMagnitude * torquePerDegree;
+            float newTorque = currentTorque + torqueToAdd;
+
+            // Clamp to maxTorqueLimit
+            if (newTorque > maxTorqueLimit)
+            {
+                torqueToAdd = maxTorqueLimit - currentTorque;
+                float actualAngle = -(torqueToAdd / torquePerDegree);
+                screwVisual.transform.Rotate(0, 0, actualAngle);
+                currentTorque = maxTorqueLimit;
+            }
+            else
+            {
+                currentTorque = newTorque;
+                screwVisual.transform.Rotate(0, 0, angle);
+            }
         }
 
         CheckTorqueState();
@@ -112,7 +126,6 @@ public class TorqueInputHandler : MonoBehaviour
         {
             isFinished = true;
             currentTorque = targetTorque;
-            isPointerActive = false;
             currentPointerId = int.MinValue;
             gameManager.PlayerFinished();
             screwVisual.color = successColor;
@@ -132,14 +145,17 @@ public class TorqueInputHandler : MonoBehaviour
         currentTorque = 0;
         isPointerActive = false;
         currentPointerId = int.MinValue;
-        screwVisual.transform.localRotation = Quaternion.identity;
 
         screwVisual.color = failColor;
         yield return new WaitForSeconds(failFlashDuration);
 
-        screwVisual.color = baseColor;
-        isResetting = false;
-        Debug.Log($"[{gameObject.name}] FAILED! Torque reset to 0");
+        Debug.Log($"[{gameObject.name}] FAILED! Exceeded torque limit. Restarting game...");
+
+        // Restart the game through GameManager
+        if (gameManager != null)
+        {
+            gameManager.RestartGame();
+        }
     }
 
     public void ResetPlayer()
