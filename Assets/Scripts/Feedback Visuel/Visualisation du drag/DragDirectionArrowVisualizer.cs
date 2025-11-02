@@ -47,6 +47,13 @@ public class DragDirectionArrowVisualizer : MonoBehaviour
     public string[] drawingSurfaceTypeNames = new[] { "DrawOnPlane" };
     // <<< FIN AJOUT
 
+    // >>> AJOUT OPTION B : hook global pour ignorer certains doigts (ex: réservés par PartDuplicator)
+    /// <summary>
+    /// Si défini et retourne true pour un fingerId, ce doigt est ignoré par le visualiseur (pas de flèche).
+    /// </summary>
+    public static Func<int, bool> ShouldSuppressFinger; // NEW
+    // <<< FIN AJOUT
+
     private const string LOG = "[DragDirectionArrowVisualizer] ";
 
     private class Finger
@@ -64,6 +71,10 @@ public class DragDirectionArrowVisualizer : MonoBehaviour
         public float lenVel;         // vel interne SmoothDamp longueur
         public float currAngle;      // angle affiché (lissé)
         public float angleVel;       // vel interne SmoothDampAngle
+
+        // >>> AJOUT OPTION B
+        public bool suppressed;      // ce doigt est volontairement ignoré par le visualiseur
+        // <<< FIN AJOUT
     }
 
     private readonly Dictionary<int, Finger> fingers = new();
@@ -132,19 +143,30 @@ public class DragDirectionArrowVisualizer : MonoBehaviour
             currLen  = minLength,
             lenVel   = 0f,
             currAngle = 0f,
-            angleVel  = 0f
+            angleVel  = 0f,
+            suppressed = false
         };
+
+        // >>> AJOUT OPTION B : suppression par hook externe
+        if (ShouldSuppressFinger != null && ShouldSuppressFinger(e.fingerId))
+        {
+            f.suppressed = true;
+            fingers[e.fingerId] = f; // on mémorise pour gérer OnMoved/OnEnded proprement
+            if (enableLogs) Debug.Log(LOG + $"Suppressed finger {e.fingerId} → no arrow");
+            return; // ne crée pas de flèche
+        }
+        // <<< FIN AJOUT
 
         f.target = FindTargetAt(e.position);
 
-        // >>> AJOUT : ne PAS créer la flèche si le doigt commence sur une surface de dessin
+        // >>> Exclusion surfaces de dessin (existant)
         if (IsOnDrawingSurface(e.position))
         {
-            fingers[e.fingerId] = f; // on garde la trace du doigt, mais sans flèche
+            fingers[e.fingerId] = f; // garde la trace du doigt, mais sans flèche
             if (enableLogs) Debug.Log(LOG + $"Began on drawing surface → no arrow (id={e.fingerId})");
             return;
         }
-        // <<< FIN AJOUT
+        // <<<
 
         // Crée la flèche UI
         if (arrowPrefab && canvas)
@@ -186,6 +208,10 @@ public class DragDirectionArrowVisualizer : MonoBehaviour
         // delta instantané doigt (pixels)
         Vector2 rawDelta = e.position - f.lastPos;
         f.lastPos = e.position;
+
+        // >>> AJOUT OPTION B : si ce doigt est supprimé, on n'affiche/maj rien
+        if (f.suppressed) return;
+        // <<<
 
         if (!f.dragging)
         {
@@ -259,7 +285,15 @@ public class DragDirectionArrowVisualizer : MonoBehaviour
         if (!fingers.TryGetValue(e.fingerId, out var f)) return;
 
         if (enableLogs)
-            Debug.Log(LOG + $"END id={f.id} hadArrow={(f.arrowUI!=null)} dragging={f.dragging}");
+            Debug.Log(LOG + $"END id={f.id} hadArrow={(f.arrowUI!=null)} dragging={f.dragging} suppressed={f.suppressed}");
+
+        // >>> AJOUT OPTION B : si supprimé, pas d'UI à détruire (cleanup simple)
+        if (f.suppressed)
+        {
+            fingers.Remove(e.fingerId);
+            return;
+        }
+        // <<<
 
         if (f.arrowUI && f.arrowImg)
         {

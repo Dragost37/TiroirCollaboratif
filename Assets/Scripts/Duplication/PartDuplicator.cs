@@ -1,4 +1,5 @@
 using System; // <- pour Func<>
+using System.Collections; // NEW: pour IEnumerator/Coroutine
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -65,6 +66,12 @@ public class PartDuplicator : MonoBehaviour
     [Tooltip("Couleur de la bulle dynamique (base + along + slack).")]
     public Color dynamicBubbleColor = new Color(1f, 0.5f, 0f, 0.25f);
 
+    // ---------- Réactivation différée ----------
+    [Header("Réactivation")]
+    [Tooltip("Délai avant de réactiver le drag/l'outil après la duplication.")]
+    public float dragReactivateDelay = 1f; // NEW
+    // -------------------------------------------
+
     private Camera _cam;
 
     // ---- Ownership global des doigts (un doigt -> un duplicateur) ----
@@ -121,7 +128,7 @@ public class PartDuplicator : MonoBehaviour
     private Vector3 _captureCenterW;
     private float   _captureRadiusW;
 
-    // ---- DEBUG: valeurs courantes dynamiques (pour le dessin) ----
+    // ---- DEBUG dyn ----
     private Vector3 _currentDynamicCenterW;
     private float   _currentDynamicRadiusW;
 
@@ -129,11 +136,20 @@ public class PartDuplicator : MonoBehaviour
     private GameObject _runtimeSource;
 
     // NEW: mémorisation des états initiaux
-    private bool _dragWasEnabled;           // NEW
-    private bool _drawingToolWasEnabled;    // NEW
+    private bool _dragWasEnabled;           
+    private bool _drawingToolWasEnabled;    
 
     // NOUVEAU : anti-flutter pour bascules répétées
     private float _lastAxisSwitchTime = -999f;
+
+    // ===== Option B: hook de suppression pour le visualiseur =====
+    private Func<int, bool> _prevSuppressHook; 
+    private Func<int, bool> _mySuppressHook;   
+
+    // ===== Option C: hook de suppression pour DraggablePart =====
+    private Func<int, bool> _prevDragSuppressHook; // NEW
+    private Func<int, bool> _myDragSuppressHook;   // NEW
+    // ============================================================
 
     private void Awake()
     {
@@ -165,6 +181,34 @@ public class PartDuplicator : MonoBehaviour
         {
             Debug.LogWarning("[PartDuplicator] MultiTouchManager.Instance est null.");
         }
+
+        // ==== Brancher le hook Option B sans écraser les autres ====
+        _prevSuppressHook = DragDirectionArrowVisualizer.ShouldSuppressFinger;
+        _mySuppressHook = (int fingerId) =>
+        {
+            bool prev = _prevSuppressHook != null && _prevSuppressHook(fingerId);
+            bool mine = s_FingerOwners.TryGetValue(fingerId, out var owner) && owner == this;
+            return prev || mine; // on additionne notre condition à l'existant
+        };
+        DragDirectionArrowVisualizer.ShouldSuppressFinger = _mySuppressHook;
+        // ===========================================================
+
+        // ==== Brancher le hook Option C (DraggablePart) ============
+        _prevDragSuppressHook = DraggablePart.ShouldSuppressFinger;
+        _myDragSuppressHook = (int fingerId) =>
+        {
+            bool prev = _prevDragSuppressHook != null && _prevDragSuppressHook(fingerId);
+
+            // NEW: neutraliser tout doigt claim par un duplicateur (évite tout drag parasite)
+            bool claimedByAnyDuplicator = s_FingerOwners.ContainsKey(fingerId);
+
+            return prev || claimedByAnyDuplicator;
+            // Si tu préfères ne bloquer que les doigts "à moi":
+            // bool claimedByMe = s_FingerOwners.TryGetValue(fingerId, out var owner) && owner == this;
+            // return prev || claimedByMe;
+        };
+        DraggablePart.ShouldSuppressFinger = _myDragSuppressHook;
+        // ===========================================================
     }
 
     private void OnDisable()
@@ -177,13 +221,28 @@ public class PartDuplicator : MonoBehaviour
             mt.OnTouchEnded  -= Ended;
         }
 
+        // Empêche une réactivation tardive si une coroutine était en cours
+        StopAllCoroutines(); // NEW
+
         // Sécurités locale et globale
-        // NEW: restaurer l'état précédent, ne pas forcer à true
-        if (_drag)       _drag.enabled       = _dragWasEnabled;        // NEW
-        if (drawingTool) drawingTool.enabled = _drawingToolWasEnabled; // NEW
+        if (_drag)       _drag.enabled       = _dragWasEnabled;
+        if (drawingTool) drawingTool.enabled = _drawingToolWasEnabled;
 
         ReleaseAllFor(this);
         ResetState();
+
+        // ==== Débranchement propre du hook visualizer ====
+        if (DragDirectionArrowVisualizer.ShouldSuppressFinger == _mySuppressHook)
+            DragDirectionArrowVisualizer.ShouldSuppressFinger = _prevSuppressHook;
+        _mySuppressHook = null;
+        _prevSuppressHook = null;
+
+        // ==== Débranchement propre du hook DraggablePart ====
+        if (DraggablePart.ShouldSuppressFinger == _myDragSuppressHook)
+            DraggablePart.ShouldSuppressFinger = _prevDragSuppressHook;
+        _myDragSuppressHook   = null;
+        _prevDragSuppressHook = null;
+        // =====================================================
     }
 
     // ----------------- Events -----------------
@@ -212,13 +271,13 @@ public class PartDuplicator : MonoBehaviour
                 // NEW: mémoriser l'état courant puis désactiver
                 if (_drag)
                 {
-                    _dragWasEnabled = _drag.enabled;  // NEW
-                    _drag.enabled   = false;          // NEW (inchangé sur le fond)
+                    _dragWasEnabled = _drag.enabled;
+                    _drag.enabled   = false;
                 }
                 if (drawingTool)
                 {
-                    _drawingToolWasEnabled = drawingTool.enabled; // NEW
-                    drawingTool.enabled    = false;               // NEW
+                    _drawingToolWasEnabled = drawingTool.enabled;
+                    drawingTool.enabled    = false;
                 }
 
                 _downTime = Time.time;
@@ -417,15 +476,23 @@ public class PartDuplicator : MonoBehaviour
 
     private void FinishDuplication()
     {
-        // NEW: restaurer au lieu de forcer à true
-        if (_drag)       _drag.enabled       = _dragWasEnabled;        // NEW
-        if (drawingTool) drawingTool.enabled = _drawingToolWasEnabled; // NEW
+        // NEW: restaurer avec un délai (configurable)
+        StartCoroutine(ReactivateAfterDelay(dragReactivateDelay));
 
         // on libère les doigts capturés (ceux réellement détenus)
         foreach (var id in _captured)
             ReleaseFinger(id, this);
 
         ResetState();
+    }
+
+    // NEW: coroutine de réactivation différée
+    private IEnumerator ReactivateAfterDelay(float delay)
+    {
+        if (delay > 0f) yield return new WaitForSeconds(delay);
+
+        if (_drag)       _drag.enabled       = _dragWasEnabled;
+        if (drawingTool) drawingTool.enabled = _drawingToolWasEnabled;
     }
 
     private void ResetState()

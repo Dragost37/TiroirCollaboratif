@@ -1774,6 +1774,14 @@ PrefabInstance:
       propertyPath: captureRadiusFactor
       value: 2
       objectReference: {fileID: 0}
+    - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      propertyPath: dragReactivateDelay
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6319388784898816646, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
+      propertyPath: dynamicCaptureSlack
+      value: 0.08
+      objectReference: {fileID: 0}
     - target: {fileID: 7182053776104015651, guid: 886fb4f7820024795b6156f80d48e625, type: 3}
       propertyPath: m_Enabled
       value: 1

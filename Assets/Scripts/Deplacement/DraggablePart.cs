@@ -1,8 +1,12 @@
+using System; // NEW: pour Func<int,bool>
 using UnityEngine;
 
 [RequireComponent(typeof(Collider))]
 public class DraggablePart : MonoBehaviour
 {
+    // NEW — hook global : retourne true si le doigt doit être ignoré par DraggablePart
+    public static Func<int, bool> ShouldSuppressFinger;
+
     [Header("Snap")]
     public string compatibleSnapTag;
     public float snapDistance = 0.08f;
@@ -62,6 +66,10 @@ public class DraggablePart : MonoBehaviour
 
     private void OnTouchBegan(MultiTouchManager.TouchEvt e)
     {
+        // NEW — neutralisation des doigts réservés (ex: par PartDuplicator)
+        if (ShouldSuppressFinger != null && ShouldSuppressFinger(e.fingerId))
+            return;
+
         if (_dragging || _cam == null) return;
 
         var ray = _cam.ScreenPointToRay(e.position);
@@ -131,9 +139,9 @@ public class DraggablePart : MonoBehaviour
     private void TrySnap()
     {
 #if UNITY_2023_1_OR_NEWER
-        var snaps = Object.FindObjectsByType<SnapPoint>(FindObjectsSortMode.None);
+        var snaps = UnityEngine.Object.FindObjectsByType<SnapPoint>(FindObjectsSortMode.None);
 #else
-        var snaps = Object.FindObjectsOfType<SnapPoint>();
+        var snaps = UnityEngine.Object.FindObjectsOfType<SnapPoint>();
 #endif
         SnapPoint best = null;
         float bestDist = float.MaxValue;
