@@ -4,25 +4,36 @@ public class PlankAssembler : MonoBehaviour
 {
     private DraggablePart _drag;
 
-    [Header("Paramètres de snap")]
+    [Header("Paramï¿½tres de snap")]
     public float snapDistance = 2f;
     public float snapAngle = 91f;
+
+    public GameManager gameManager;
+    public GameObject ScrewGameCanva;
+    [Header("UI")]
+    public float hideCanvasDelay = 0.5f;
 
     private void Awake()
     {
         _drag = GetComponent<DraggablePart>();
+        if (gameManager == null)
+            gameManager = FindObjectOfType<GameManager>();
     }
 
     private void OnEnable()
     {
         if (_drag != null)
             _drag.OnReleased += TryAssemble;
+        if (gameManager != null)
+            gameManager.OnGameEnded += HandleGameEnded;
     }
 
     private void OnDisable()
     {
         if (_drag != null)
             _drag.OnReleased -= TryAssemble;
+        if (gameManager != null)
+            gameManager.OnGameEnded -= HandleGameEnded;
     }
 
     private void TryAssemble(DraggablePart part)
@@ -55,7 +66,7 @@ public class PlankAssembler : MonoBehaviour
         if (best != null && bestDist <= snapDistance && best.transform.parent != transform)
         {
             float ang = Quaternion.Angle(transform.rotation, best.transform.rotation);
-            Debug.Log($"[PlankAssembler] Meilleur snap trouvé à distance {bestDist:F2} et angle {ang:F2}");
+            Debug.Log($"[PlankAssembler] Meilleur snap trouvï¿½ ï¿½ distance {bestDist:F2} et angle {ang:F2}");
             if (ang <= snapAngle)
             {
                 Vector3 closestPoint = col.ClosestPoint(best.transform.position);
@@ -82,9 +93,28 @@ public class PlankAssembler : MonoBehaviour
                         if (c != other)
                             Physics.IgnoreCollision(c, other, true);
 
+                ScrewGameCanva.SetActive(true);
+                gameManager.StartMinigame();
+
                 best.OnSnapped(gameObject);
                 _drag.DisableDrag();
             }
         }
+    }
+
+    private void HandleGameEnded()
+    {
+        // hide the canvas after a short delay
+        StartCoroutine(HideCanvasAfterDelay());
+    }
+
+    private System.Collections.IEnumerator HideCanvasAfterDelay()
+    {
+        if (ScrewGameCanva == null)
+            yield break;
+
+        yield return new WaitForSeconds(hideCanvasDelay);
+        if (ScrewGameCanva != null)
+            ScrewGameCanva.SetActive(false);
     }
 }

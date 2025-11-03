@@ -14,6 +14,7 @@ public class Throwable : MonoBehaviour
 
     private Rigidbody _rb;
     private Camera _cam;
+    private DraggablePart _drag;
 
     // Touches qui ont commencé sur cet objet (fingerId)
     private readonly HashSet<int> _touchesOnObject = new();
@@ -31,16 +32,19 @@ public class Throwable : MonoBehaviour
     {
         _rb = GetComponent<Rigidbody>();
         _cam = Camera.main;
+        _drag = GetComponent<DraggablePart>();
 
         var mt = MultiTouchManager.Instance;
         if (mt != null)
         {
             mt.OnTouchBegan += OnTouchBegan;
             mt.OnTouchMoved += OnTouchMoved;
-            mt.OnTouchEnded += OnTouchEnded;
+            //mt.OnTouchEnded += OnTouchEnded;
         }
         else Debug.LogWarning("[Throwable] MultiTouchManager non trouvé.");
     }
+
+    
 
     void OnDestroy()
     {
@@ -65,6 +69,7 @@ public class Throwable : MonoBehaviour
         {
             _touchesOnObject.Add(e.fingerId);
         }
+        Debug.Log($"[Throwable] Touch began on object: {_touchesOnObject.Count} active touches.");
     }
 
     void OnTouchMoved(MultiTouchManager.TouchEvt e)
@@ -77,11 +82,13 @@ public class Throwable : MonoBehaviour
         var relevantTouches = new List<Touch>();
         foreach (var t in Input.touches)
         {
-            if (_touchesOnObject.Contains(t.fingerId)) relevantTouches.Add(t);
+            //if (_touchesOnObject.Contains(t.fingerId))
+                relevantTouches.Add(t);
         }
 
         if (relevantTouches.Count == 3)
         {
+            Debug.Log("[Throwable] Calculating throw velocity from 3 touches.");
             // Moyenne des deltas écran (pixels)
             Vector2 avgDelta = Vector2.zero;
             foreach (var t in relevantTouches) avgDelta += t.deltaPosition;
@@ -110,6 +117,7 @@ public class Throwable : MonoBehaviour
         //  - on a récemment enregistré un _recentTriple valable,
         //  - le délai est dans la fenêtre recentTripleTimeout,
         //  - le fingerId qui s'est levé faisait partie des fingerIds qui ont produit la vélocité.
+        Debug.Log("[Throwable] Touch ended, checking for throw.");
         if (_recentTriple && (Time.time - _recentTripleTime) <= recentTripleTimeout)
         {
             if (_recentTripleFingerIds.Contains(e.fingerId) && _recentTripleVelocity.magnitude > throwThreshold)
