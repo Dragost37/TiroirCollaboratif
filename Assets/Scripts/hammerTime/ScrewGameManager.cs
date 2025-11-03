@@ -13,6 +13,9 @@ public class GameManager : MonoBehaviour
     private int playersFinished = 0;
     private bool isGameWon = false;
 
+    // Event invoked when the minigame finishes (all players finished)
+    public System.Action OnGameEnded;
+
     void Start()
     {
         if (players == null || players.Length == 0)
@@ -59,6 +62,7 @@ public class GameManager : MonoBehaviour
     private IEnumerator GameEndSequence()
     {
         isGameWon = true;
+        OnGameEnded?.Invoke();
         Debug.Log("All players finished! Game Over.");
 
         // Wait for the specified delay
