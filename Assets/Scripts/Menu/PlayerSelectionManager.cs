@@ -199,7 +199,7 @@ public class PlayerSelectionManager : MonoBehaviour
             Debug.LogError("GameDataTransfer n'a pas été trouvé. Les données des joueurs ne seront pas transférées !");
         }
 
-        SceneManager.LoadScene("MAIN", LoadSceneMode.Single);
+        SceneManager.LoadScene("SCENARIO1", LoadSceneMode.Single);
     }
 
     public List<int> GetJoinedPlayers()
