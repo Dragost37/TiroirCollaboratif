@@ -9,7 +9,7 @@ public class SceneHotkeys : MonoBehaviour
     public string sceneForAmpersand_1 = "SCENARIO2";   // & (Alpha1)
     public string sceneForEAcute_2 = "SCENARIO4";      // é (Alpha2)
     public string sceneForQuote_3 = "SCENARIO5";       // " (Alpha3)
-    public string sceneForApostrophe_4;  // ' (Alpha4)
+    public string sceneForApostrophe_4 = "SCENARIO6";// ' (Alpha4)
     public string sceneForLeftParen_5;   // ( (Alpha5)
     public string sceneForHyphen_6;      // - (Alpha6)
 
